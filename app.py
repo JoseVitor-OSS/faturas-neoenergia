@@ -314,53 +314,46 @@ def autorizar_google():
 # ----------------------------
 # Configuração do Selenium
 # ----------------------------
-def iniciar_navegador(headless=False):  # Agora pode ser False!
+def iniciar_navegador(headless=True):
+    from selenium.webdriver.chrome.service import Service
+    from selenium.webdriver.chrome.options import Options
+    
     chrome_options = Options()
     
-    # No Railway, podemos rodar COM interface
-    if not headless:
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--remote-debugging-port=9222")
-        chrome_options.add_argument("--window-size=1920,1080")
-    else:
+    if headless:
         chrome_options.add_argument("--headless=new")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
     
-    # Configurações comuns
+    # Configurações essenciais para container
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--remote-debugging-port=9222")
+    chrome_options.add_argument("--window-size=1920,1080")
+    
+    # Configurações para evitar detecção
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option('useAutomationExtension', False)
     
     try:
-        from selenium.webdriver.chrome.service import Service
-        from webdriver_manager.chrome import ChromeDriverManager
-        
-        service = Service(ChromeDriverManager().install())
+        # No Railway, usar ChromeDriver direto (já instalado no Dockerfile)
+        service = Service("/usr/local/bin/chromedriver")
         driver = webdriver.Chrome(service=service, options=chrome_options)
         
         driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+        
         return driver
         
     except Exception as e:
         st.error(f"Erro ao iniciar navegador: {e}")
-        return None
-
-# === CONFIGURAÇÃO DE RETRY === 
-MAX_RETRIES = 3
-RETRY_DELAY = 5  # segundos
-RETRY_BACKOFF = 1.5
-MAX_DELAY = 30
-
-# Erros que NÃO devem ter retry
-ERRORS_SEM_RETRY = [
-    "fatura indisponível no canal digital",
-    "fatura não disponível",
-    "documento não relacionado",
-    "acesso negado",
-    "não encontrado"
-]
+        
+        # Fallback: tentar sem Service
+        try:
+            driver = webdriver.Chrome(options=chrome_options)
+            return driver
+        except Exception as e2:
+            st.error(f"Também falhou: {e2}")
+            return None
 
 def fazer_requisicao_com_retry(url, headers=None, params=None, method='GET', 
                                  max_retries=MAX_RETRIES, 
@@ -1300,6 +1293,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
