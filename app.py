@@ -966,6 +966,30 @@ def main():
 
 # 🚀 INICIAR APLICAÇÃO - CONFIGURAÇÃO PARA RAILWAY
 # 🚀 INICIAR APLICAÇÃO
+# 🚀 SOLUÇÃO DEFINITIVA - VERIFICAÇÃO DUPLA
 if __name__ == "__main__":
-    main()
+    import sys
+    import os
+    
+    # Verificar SE já está rodando no Streamlit
+    is_streamlit = any("streamlit" in arg.lower() for arg in sys.argv)
+    
+    if not is_streamlit:
+        # 🔧 PROBLEMA 1: Não está no Streamlit - redirecionar UMA VEZ
+        print("🚀 INICIANDO STREAMLIT...")
+        port = os.environ.get("PORT", "8000")
+        
+        # Configurar UMA VEZ
+        os.environ["STREAMLIT_SERVER_PORT"] = port
+        os.environ["STREAMLIT_SERVER_ADDRESS"] = "0.0.0.0"
+        
+        # Importar e executar UMA VEZ
+        from streamlit.web import cli as stcli
+        sys.argv = ["streamlit", "run", __file__]
+        stcli.main()
+    else:
+        # ✅ PROBLEMA 2: Já está no Streamlit - executar app normal
+        print("✅ STREAMLIT JÁ INICIADO - EXECUTANDO APP")
+        main()
+
 
