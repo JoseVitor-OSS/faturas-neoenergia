@@ -9,5 +9,4 @@ COPY . .
 
 EXPOSE 8000
 
-# Comando direto
 CMD ["python", "app.py"]
