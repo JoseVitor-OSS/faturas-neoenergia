@@ -987,7 +987,6 @@ def main():
         st.error(f"❌ Erro ao carregar dados: {e}")
 
 # 🚀 INICIAR APLICAÇÃO - CONFIGURAÇÃO PARA RAILWAY
-# 🎯 SOLUÇÃO ROBUSTA - VERIFICAÇÃO COMPLETA
 if __name__ == "__main__":
     import sys
     import os
