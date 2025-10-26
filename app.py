@@ -267,26 +267,70 @@ def exibir_secao_downloads():
 # ==================== AUTENTICAÇÃO GOOGLE ====================
 @st.cache_resource
 def autorizar_google():
-    """Autenticação usando Service Account do Google"""
-    try:
-        # Para Streamlit Cloud (secrets)
-        if 'gcp_service_account' in st.secrets:
-            service_account_info = dict(st.secrets['gcp_service_account'])
-            creds = Credentials.from_service_account_info(service_account_info)
-        
-        # Para desenvolvimento local (arquivo JSON)
-        elif os.path.exists("service_account.json"):
-            creds = Credentials.from_service_account_file("service_account.json")
-        
+    """Autenticação OAuth 2.0 para Streamlit Cloud"""
+    creds = None
+    
+    # Tentar carregar token existente
+    if os.path.exists("token.pickle"):
+        with open("token.pickle", "rb") as token:
+            creds = pickle.load(token)
+    
+    # Se não tem credenciais válidas, fazer novo login
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
         else:
-            st.error("❌ Credenciais do Google não encontradas")
-            return None
-        
-        return gspread.authorize(creds)
-        
-    except Exception as e:
-        st.error(f"❌ Erro na autenticação Google: {e}")
-        return None
+            # Configurar OAuth flow com secrets do Streamlit
+            flow = Flow.from_client_config(
+                client_config={
+                    "web": {
+                        "client_id": st.secrets["client_id"],
+                        "client_secret": st.secrets["client_secret"],
+                        "auth_uri": st.secrets["auth_uri"],
+                        "token_uri": st.secrets["token_uri"],
+                        "redirect_uris": st.secrets["redirect_uris"]
+                    }
+                },
+                scopes=["https://www.googleapis.com/auth/spreadsheets", 
+                       "https://www.googleapis.com/auth/drive"]
+            )
+            
+            # Gerar URL de autorização
+            auth_url, _ = flow.authorization_url(prompt='consent')
+            
+            st.markdown(f"""
+            ### 🔐 Autorização Necessária
+            
+            1. **Clique no link abaixo** para autorizar o acesso
+            2. **Faça login** na sua conta Google
+            3. **Copie o código de autorização** e cole abaixo
+            
+            [**👉 CLIQUE AQUI PARA AUTORIZAR 👈**]({auth_url})
+            """)
+            
+            # Input para o código de autorização
+            auth_code = st.text_input("Cole o código de autorização aqui:")
+            
+            if auth_code:
+                with st.spinner("🔗 Conectando ao Google..."):
+                    try:
+                        flow.fetch_token(code=auth_code)
+                        creds = flow.credentials
+                        
+                        # Salvar token para uso futuro
+                        with open("token.pickle", "wb") as token:
+                            pickle.dump(creds, token)
+                        
+                        st.success("✅ Autenticação realizada com sucesso!")
+                        st.rerun()
+                        
+                    except Exception as e:
+                        st.error(f"❌ Erro na autenticação: {e}")
+                        return None
+            else:
+                st.stop()  # Para a execução até ter o código
+    
+    return gspread.authorize(creds)
 
 # ----------------------------
 # Configuração do Selenium
@@ -1144,5 +1188,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
