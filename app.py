@@ -24,35 +24,6 @@ import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import os
 
-class HealthHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        if self.path in ['/health', '/', '/_stcore/health']:
-            self.send_response(200)
-            self.send_header('Content-type', 'text/plain')
-            self.end_headers()
-            self.wfile.write(b'OK')
-        else:
-            self.send_response(404)
-            self.end_headers()
-    
-    def log_message(self, format, *args):
-        pass  # Silenciar logs
-
-def start_health_server():
-    """Inicia servidor de health check"""
-    try:
-        port = int(os.environ.get('HEALTH_PORT', '8080'))
-        server = HTTPServer(('0.0.0.0', port), HealthHandler)
-        thread = threading.Thread(target=server.serve_forever)
-        thread.daemon = True
-        thread.start()
-        print(f"✅ Health check server iniciado na porta {port}")
-    except Exception as e:
-        print(f"⚠️ Health check não iniciado: {e}")
-
-# Iniciar health check ANTES de tudo
-start_health_server()
-
 # === CONFIGURAÇÃO DE RETRY === 
 MAX_RETRIES = 3
 RETRY_DELAY = 5  # segundos
@@ -1088,6 +1059,7 @@ if __name__ == "__main__":
     else:
         # ✅ Executar aplicação normalmente
         main()
+
 
 
 
