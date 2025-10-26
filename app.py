@@ -1036,40 +1036,31 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
 
 # ==================== FUNÇÃO PRINCIPAL ====================
 def main():
-    st.sidebar.header("⚙️ Configurações do Scraper")
-    
-    # Debug: verificar se secrets estão carregados
-    if hasattr(st, 'secrets'):
-        st.sidebar.write("🔐 Secrets carregados:", list(st.secrets.keys()))
-    else:
-        st.sidebar.write("🔐 Nenhum secret encontrado")
-    
-    # Configurações do usuário
-    headless = st.sidebar.checkbox("Modo Headless (sem interface gráfica)", value=False)
-    st.sidebar.header("⚙️ Configurações do Scraper")
-    
-    # Configurações do usuário
-    headless = st.sidebar.checkbox("Modo Headless (sem interface gráfica)", value=False)
-    
-    # Removido o campo de diretório - usando diretório fixo "Neoenergia"
-    meses_desejados = st.sidebar.text_input("Meses desejados (separados por vírgula)", "2025/10")
-    mes_atraso = st.sidebar.text_input("Mês limite para UC inativa", "2025/06")
-    
-    meses_lista = [mes.strip() for mes in meses_desejados.split(",")]
-    
-    # Adicionar seção de downloads na sidebar
-    st.sidebar.header("📥 Downloads")
-    if st.sidebar.button("🔄 Atualizar Lista de Arquivos"):
-        st.rerun()
-    
     try:
-        with st.spinner("🔗 Conectando ao Google Sheets..."):
-            gc = autorizar_google()
+        st.write("🔍 ETAPA 1: Iniciando aplicação...")
+        
+        # Primeiro, mostrar a sidebar básica
+        st.sidebar.header("⚙️ Configurações do Scraper")
+        headless = st.sidebar.checkbox("Modo Headless", value=False)
+        meses_desejados = st.sidebar.text_input("Meses desejados", "2025/10")
+        mes_atraso = st.sidebar.text_input("Mês limite para UC inativa", "2025/06")
+        
+        st.write("✅ ETAPA 1: Sidebar básica carregada")
+        
+        # Tentar conectar ao Google Sheets
+        st.write("🔍 ETAPA 2: Conectando ao Google Sheets...")
+        gc = autorizar_google()
         
         if not gc:
-            st.error("❌ Não foi possível conectar ao Google Sheets")
+            st.error("❌ Falha na autenticação do Google Sheets")
+            # Mostrar interface básica mesmo sem Google Sheets
+            st.info("💡 A aplicação carregou, mas não conseguiu conectar ao Google Sheets")
             return
-            
+        
+        st.write("✅ ETAPA 2: Google Sheets conectado")
+        
+        # Carregar dados da planilha
+        st.write("🔍 ETAPA 3: Carregando dados da planilha...")
         sheet_key = "1gI3h3F1ALScglYfr7NIfAxYyV0NSVjEJvoKFarlywBY"
         sheet_name = "bd_ucs"
 
@@ -1078,7 +1069,13 @@ def main():
 
         dados = sheet.get_all_values()
         df = pd.DataFrame(dados[1:], columns=dados[0])
-
+        
+        st.write(f"✅ ETAPA 3: Dados carregados - {len(df)} registros")
+        
+        # Agora mostrar a interface completa
+        st.write("🔍 ETAPA 4: Carregando interface completa...")
+        
+        # Resto do código da interface original...
         df.columns = ['uc_id', 'cliente_id_gestor', 'distribuidora_id', 'codigo', 'login',
                         'senha_dist', 'Status', 'documento', 'Distribuidora',
                         'Status_Mes_Anterior', 'data_geracao', 'nome', 'Geradora?',
@@ -1100,9 +1097,11 @@ def main():
             help="Selecione um cliente específico ou 'Todos os Clientes'"
         )
         
+        st.write("✅ Filtro de cliente carregado")
+        
         # Aplicar filtro de cliente
         if cliente_selecionado == "Todos os Clientes":
-            clientes_selecionados = clientes_unicos[1:]  # Remove "Todos os Clientes" da lista
+            clientes_selecionados = clientes_unicos[1:]
         else:
             clientes_selecionados = [cliente_selecionado]
         
@@ -1114,12 +1113,11 @@ def main():
             estimativa_fim = st.number_input("Fim do intervalo da Estimativa:", 
                                             value=int(df['Estimativa'].max()))
 
-        # Filtro por código UC para reset do dataframe - CORRIGIDO
+        # Filtro por código UC
         st.sidebar.subheader("🔄 Reset por Código UC")
         codigo_uc_inicio = st.sidebar.text_input(
             "Código UC para iniciar busca:",
-            placeholder="Digite o código UC para começar a partir dele",
-            help="A busca começará a partir desta UC. Deixe vazio para começar do início."
+            placeholder="Digite o código UC para começar a partir dele"
         )
 
         # Aplicar filtros iniciais
@@ -1133,37 +1131,25 @@ def main():
             ['distribuidora_id','codigo', 'login', 'senha_dist']
         ].copy()
 
-        # DEBUG: Mostrar informações sobre o dataframe filtrado
         st.sidebar.info(f"📊 UCs após filtros básicos: {len(df_filtrado)}")
 
-        # Aplicar filtro por código UC se especificado - CORREÇÃO FINAL
+        # Aplicar filtro por código UC se especificado
         if codigo_uc_inicio and codigo_uc_inicio.strip():
             codigo_uc_inicio = codigo_uc_inicio.strip()
             try:
-                # CORREÇÃO: Resetar o índice do dataframe filtrado primeiro
                 df_filtrado_reset = df_filtrado.reset_index(drop=True)
-                
-                # Encontrar todas as ocorrências da UC
                 indices = df_filtrado_reset.index[df_filtrado_reset['codigo'] == codigo_uc_inicio].tolist()
                 
                 if indices:
                     start_index = indices[0]
-                    st.sidebar.write(f"✅ UC encontrada na posição: {start_index + 1} de {len(df_filtrado_reset)}")
-                    
-                    # Filtrar a partir dessa posição
                     df_filtrado = df_filtrado_reset.iloc[start_index:].copy()
-                    
                     st.sidebar.success(f"✅ Busca iniciará a partir da UC: {codigo_uc_inicio}")
-                    st.sidebar.info(f"📊 Restam {len(df_filtrado)} UCs para processar")
-                else:
-                    st.sidebar.warning(f"⚠️ UC {codigo_uc_inicio} não encontrada no dataframe filtrado.")
             except Exception as e:
                 st.sidebar.error(f"❌ Erro ao processar código UC: {e}")
 
-        # Preencher senhas vazias
+        # Preencher senhas vazias e ordenar
         df_filtrado["senha_dist"] = df_filtrado["senha_dist"].fillna("")
 
-        # Ordenação por frequência de login
         if len(df_filtrado) > 0:
             frequencia_login = df_filtrado['login'].value_counts()
             df_filtrado = df_filtrado.copy()
@@ -1175,37 +1161,15 @@ def main():
         df_filtrado.columns = ['dist','codigo','login','senha_dist']
 
         st.subheader("📊 Dados Filtrados para Processamento")
-        st.info(f"🔄 Ordenado por login mais frequente - UCs do mesmo usuário ficam agrupadas")
-        
-        # Mostrar informações sobre o reset
-        if codigo_uc_inicio and codigo_uc_inicio.strip() and len(df_filtrado) > 0:
-            if codigo_uc_inicio in df_filtrado['codigo'].values:
-                st.warning(f"🔄 Processamento iniciará a partir da UC: **{codigo_uc_inicio}**")
         
         if len(df_filtrado) > 0:
             st.dataframe(df_filtrado, use_container_width=True)
             st.success(f"✅ Total de registros para processar: {len(df_filtrado)}")
         else:
-            st.error("❌ Nenhum registro encontrado para processar após aplicar os filtros.")
-            st.info("💡 Verifique os filtros aplicados e tente novamente.")
+            st.error("❌ Nenhum registro encontrado para processar.")
             return
 
-        if len(df_filtrado) > 0:
-            st.subheader("📈 Estatísticas de Agrupamento")
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                total_logins = df_filtrado['login'].nunique()
-                st.metric("Total de Logins Únicos", total_logins)
-            with col2:
-                media_ucs_por_login = len(df_filtrado) / total_logins if total_logins > 0 else 0
-                st.metric("Média de UCs por Login", f"{media_ucs_por_login:.1f}")
-            with col3:
-                if total_logins > 0:
-                    login_mais_frequente = df_filtrado['login'].value_counts().index[0]
-                    qtd_mais_frequente = df_filtrado['login'].value_counts().iloc[0]
-                    st.metric(f"Login Mais Frequente ({login_mais_frequente})", f"{qtd_mais_frequente} UCs")
-
-        # Botões de controle de execução
+        # Botões de controle
         col1, col2 = st.columns(2)
         
         with col1:
@@ -1228,53 +1192,21 @@ def main():
                     progress_bar.progress(1.0)
                     status_text.text("✅ Extração concluída!")
                     st.session_state.executando = False
-                    
-                    st.subheader("📄 Relatório Detalhado da Execução")
-                    
-                    with st.expander(f"✅ UCs com Sucesso ({len(resultados['ucs_sucesso'])})"):
-                        st.json(resultados['ucs_sucesso'])
-                    
-                    with st.expander(f"📦 UCs Retidas ({len(resultados['ucs_retidas'])})"):
-                        st.json(resultados['ucs_retidas'])
-
-                    with st.expander(f"🚫 Faturas Indisponíveis ({len(resultados['ucs_fatura_indisponivel'])})"):
-                        st.json(resultados['ucs_fatura_indisponivel'])
-                    
-                    with st.expander(f"🔴 Erros de Sistema ({len(resultados['ucs_erro_sistema'])})"):
-                        st.json(resultados['ucs_erro_sistema'])
-
-                    with st.expander(f"❌ Erros de Busca ({len(resultados['ucs_erro_busca'])})"):
-                        st.json(resultados['ucs_erro_busca'])
-                        
-                    with st.expander(f"📭 UCs Sem Fatura ({len(resultados['ucs_sem_fatura'])})"):
-                        st.json(resultados['ucs_sem_fatura'])
-                    
-                    with st.expander(f"⛔ UCs Inativas ({len(resultados['ucs_inativas'])})"):
-                        st.json(resultados['ucs_inativas'])
-                    
-                    with st.expander(f"🔐 UCs para Ativar Cadastro ({len(resultados['ucs_ativar_cadastro'])})"):
-                        st.json(resultados['ucs_ativar_cadastro'])
-                    
-                    with st.expander(f"🔑 UCs com Credenciais Inválidas ({len(resultados['ucs_cadastro_invalido'])})"):
-                        st.json(resultados['ucs_cadastro_invalido'])
 
         with col2:
             if st.button("⏹️ Parar Execução", type="secondary", use_container_width=True):
                 parar_execucao()
-                st.warning("⏹️ Comando para parar execução enviado. Aguardando conclusão do processo atual...")
-
-        # Mostrar status atual da execução
-        if st.session_state.executando:
-            st.info("🔄 Execução em andamento...")
-        elif st.session_state.parar_execucao:
-            st.warning("⏹️ Execução interrompida pelo usuário")
+                st.warning("⏹️ Comando para parar execução enviado.")
 
         # Exibir seção de downloads
         exibir_secao_downloads()
+        
+        st.write("✅ ETAPA 4: Interface completa carregada com sucesso!")
 
     except Exception as e:
-        st.error(f"❌ Erro ao carregar dados: {e}")
+        st.error(f"❌ Erro crítico na aplicação: {e}")
         st.exception(e)
+
 
 
 
