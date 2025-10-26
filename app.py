@@ -361,28 +361,40 @@ def autorizar_google():
 # ----------------------------
 def iniciar_navegador(headless=True):
     chrome_options = Options()
-    if headless:
-        chrome_options.add_argument("--headless=new")
+    
+    # Configurações ESSENCIAIS para Railway
     chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-dev-shm-usage") 
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--window-size=1920,1080")
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option('useAutomationExtension', False)
     
-    # Configurações específicas para Railway
-    if 'RAILWAY_ENVIRONMENT' in os.environ:
-        chrome_options.binary_location = "/usr/bin/google-chrome"
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--remote-debugging-port=9222")
+    if headless:
+        chrome_options.add_argument("--headless=new")
     
     try:
+        # NO RAILWAY: Chrome já está no PATH, use diretamente
         driver = webdriver.Chrome(options=chrome_options)
         driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         return driver
     except Exception as e:
-        st.error(f"Erro ao iniciar navegador: {e}")
+        st.error(f"❌ Erro ao iniciar navegador: {e}")
+        
+        # Debug info
+        import subprocess
+        try:
+            # Verificar se Chrome está instalado
+            chrome_check = subprocess.run(['which', 'google-chrome-stable'], capture_output=True, text=True)
+            st.write(f"Chrome path: {chrome_check.stdout}")
+            
+            # Verificar se chromedriver está instalado  
+            driver_check = subprocess.run(['which', 'chromedriver'], capture_output=True, text=True)
+            st.write(f"ChromeDriver path: {driver_check.stdout}")
+        except:
+            pass
+            
         return None
 
 # ----------------------------
@@ -1009,6 +1021,7 @@ if __name__ == "__main__":
     else:
         # ✅ Executar aplicação normalmente
         main()
+
 
 
 
