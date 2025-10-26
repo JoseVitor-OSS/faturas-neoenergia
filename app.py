@@ -21,7 +21,24 @@ import zipfile
 import io
 import os
 import sys
+print("=== DEBUG INFO ===")
+print("RAILWAY Environment:", "RAILWAY" in os.environ)
+print("PORT:", os.environ.get('PORT'))
+print("Args:", sys.argv)
+print("File:", __file__)
+print("Name:", __name__)
+print("==================")
 
+# Se estiver no Railway e não for streamlit run, redirecionar
+if __name__ == "__main__" and "RAILWAY" in os.environ and "streamlit" not in " ".join(sys.argv):
+    print("🚀 REDIRECIONANDO PARA STREAMLIT...")
+    port = os.environ.get('PORT', '8000')
+    result = subprocess.run([
+        "streamlit", "run", __file__, 
+        "--server.port", port, 
+        "--server.address", "0.0.0.0"
+    ])
+    sys.exit(result.returncode)
 # FORÇAR execução como Streamlit se detectar ambiente Railway
 if __name__ != "__main__" and "RAILWAY" in os.environ:
     os.system(f"streamlit run {__file__} --server.port={os.environ.get('PORT', '8000')} --server.address=0.0.0.0")
@@ -1316,6 +1333,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
