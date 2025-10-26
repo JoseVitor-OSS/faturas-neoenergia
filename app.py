@@ -24,25 +24,42 @@ import sys
 import subprocess
 
 
-# SEMPRE redirecionar para streamlit run quando executado como python app.py
-# SOLUÇÃO CORRIGIDA - Usar porta dinâmica
-if __name__ == "__main__" and len(sys.argv) == 1:
-    print("🚀 REDIRECIONANDO PARA STREAMLIT RUN...")
-    port = os.environ.get('PORT', '8000')
+import os
+import sys
+import fcntl
+import atexit
+
+# 🔒 IMPEDIR EXECUÇÃO DUPLICADA
+lock_file = "/tmp/streamlit.lock"
+
+def acquire_lock():
+    try:
+        lock_fd = open(lock_file, 'w')
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return lock_fd
+    except (IOError, BlockingIOError):
+        print("⏹️ Outra instância já está em execução. Saindo...")
+        sys.exit(0)
+
+# Adquirir lock
+lock_fd = acquire_lock()
+atexit.register(lambda: lock_fd.close())
+
+# 🚀 AGORA INICIAR STREAMLIT
+if __name__ == "__main__":
+    from streamlit.web import cli as stcli
     
-    # Executar streamlit run
-    result = subprocess.run([
-        sys.executable, "-m", "streamlit", "run", 
-        __file__, 
-        "--server.port", port, 
+    port = os.environ.get("PORT", "8000")
+    sys.argv = [
+        "streamlit", "run", __file__,
+        "--server.port", port,
         "--server.address", "0.0.0.0",
         "--server.headless", "true",
-        "--server.enableCORS", "false",
-        "--server.enableXsrfProtection", "false"
-    ])
-    sys.exit(result.returncode)
-
-print("✅ EXECUTANDO VIA STREAMLIT - TUDO CERTO!")
+        "--global.developmentMode", "false"
+    ]
+    
+    print(f"🎯 INICIANDO STREAMLIT NA PORTA {port}...")
+    stcli.main()
     
 # ----------------------------
 # Configurações iniciais
@@ -1333,6 +1350,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
