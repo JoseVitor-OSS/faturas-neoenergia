@@ -268,68 +268,51 @@ def exibir_secao_downloads():
 # ==================== AUTENTICAÇÃO GOOGLE ====================
 @st.cache_resource
 def autorizar_google():
-    """Autenticação simples com Service Account"""
+    """Versão simplificada para debug"""
     try:
         from google.oauth2.service_account import Credentials
+        import gspread
         
-        st.write("🔍 Iniciando autenticação...")
+        st.info("🔄 Tentando conectar ao Google Sheets...")
         
-        # No Streamlit Cloud
-        if hasattr(st, 'secrets') and 'gcp_service_account' in st.secrets:
-            st.write("✅ Secrets encontrados no Streamlit Cloud")
-            
-            service_account_info = dict(st.secrets['gcp_service_account'])
-            
-            # Verificar se temos as chaves necessárias
-            required_keys = ['private_key', 'client_email', 'project_id']
-            missing_keys = [key for key in required_keys if key not in service_account_info]
-            
-            if missing_keys:
-                st.error(f"❌ Chaves faltando nos secrets: {missing_keys}")
-                return None
-            
-            creds = Credentials.from_service_account_info(
-                service_account_info,
-                scopes=["https://www.googleapis.com/auth/spreadsheets", 
-                       "https://www.googleapis.com/auth/drive"]
-            )
-            gc = gspread.authorize(creds)
-            
-            # Testar a conexão
-            try:
-                # Tentar listar planilhas para verificar se está funcionando
-                gc.list_spreadsheet_files()
-                st.success("✅ Conectado ao Google Sheets via Service Account")
-                return gc
-            except Exception as test_error:
-                st.error(f"❌ Erro ao testar conexão: {test_error}")
-                return None
-        
-        else:
-            st.error("""
-            🔐 Credenciais não encontradas!
-            
-            **Para Streamlit Cloud:**
-            - Adicione as credenciais da Service Account em Settings → Secrets
-            
-            **Formato necessário:**
+        # Verificar se secrets existem
+        if not hasattr(st, 'secrets') or 'gcp_service_account' not in st.secrets:
+            st.error("❌ Nenhuma credencial encontrada nos Secrets")
+            st.info("""
+            **Para configurar:**
+            1. Vá em Settings → Secrets no Streamlit Cloud
+            2. Adicione as credenciais da Service Account no formato:
             ```toml
             [gcp_service_account]
             type = "service_account"
-            project_id = "seu-project"
-            private_key_id = "abc123..."
+            project_id = "..."
+            private_key_id = "..."
             private_key = "-----BEGIN PRIVATE KEY-----\\n..."
-            client_email = "email@projeto.iam.gserviceaccount.com"
-            client_id = "123456789"
-            auth_uri = "https://accounts.google.com/o/oauth2/auth"
-            token_uri = "https://oauth2.googleapis.com/token"
-            auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
+            client_email = "..."
+            client_id = "..."
             ```
             """)
             return None
-            
+        
+        # Obter credenciais
+        secrets = st.secrets['gcp_service_account']
+        st.write("📋 Credenciais carregadas")
+        
+        # Criar credenciais
+        creds = Credentials.from_service_account_info(
+            secrets,
+            scopes=["https://www.googleapis.com/auth/spreadsheets", 
+                   "https://www.googleapis.com/auth/drive"]
+        )
+        
+        # Autorizar
+        gc = gspread.authorize(creds)
+        st.success("✅ Autenticado com sucesso!")
+        
+        return gc
+        
     except Exception as e:
-        st.error(f"❌ Erro na autenticação Google Sheets: {e}")
+        st.error(f"❌ Erro de autenticação: {str(e)}")
         return None
 
 # ----------------------------
@@ -1315,6 +1298,7 @@ def main():
     except Exception as e:
         st.error(f"❌ Erro ao carregar dados: {e}")
         st.exception(e)
+
 
 
 
