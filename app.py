@@ -314,54 +314,38 @@ def autorizar_google():
 # ----------------------------
 # Configuração do Selenium
 # ----------------------------
-def iniciar_navegador(headless=True):  # Forçar headless no Cloud
-    from selenium.webdriver.chrome.service import Service
-    from webdriver_manager.chrome import ChromeDriverManager
-    from webdriver_manager.core.os_manager import ChromeType
-    
+def iniciar_navegador(headless=False):  # Agora pode ser False!
     chrome_options = Options()
     
-    # Configurações ESSENCIAIS para Streamlit Cloud
-    chrome_options.add_argument("--headless=new")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--disable-features=VizDisplayCompositor")
-    chrome_options.add_argument("--remote-debugging-port=9222")
-    chrome_options.add_argument("--window-size=1920,1080")
+    # No Railway, podemos rodar COM interface
+    if not headless:
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--remote-debugging-port=9222")
+        chrome_options.add_argument("--window-size=1920,1080")
+    else:
+        chrome_options.add_argument("--headless=new")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
     
-    # Configurações para evitar detecção
+    # Configurações comuns
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option('useAutomationExtension', False)
     
     try:
-        # Usar webdriver-manager para gerenciar o ChromeDriver
+        from selenium.webdriver.chrome.service import Service
+        from webdriver_manager.chrome import ChromeDriverManager
+        
         service = Service(ChromeDriverManager().install())
         driver = webdriver.Chrome(service=service, options=chrome_options)
         
-        # Configurações adicionais para evitar detecção
         driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-        driver.execute_cdp_cmd('Network.setUserAgentOverride', {
-            "userAgent": 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        })
-        
         return driver
         
     except Exception as e:
         st.error(f"Erro ao iniciar navegador: {e}")
-        
-        # Fallback: tentar método alternativo
-        try:
-            st.info("🔄 Tentando método alternativo...")
-            chrome_options.add_argument("--headless")
-            chrome_options.add_argument("--disable-software-rasterizer")
-            
-            driver = webdriver.Chrome(options=chrome_options)
-            return driver
-        except Exception as e2:
-            st.error(f"❌ Também falhou no método alternativo: {e2}")
-            return None
+        return None
 
 # === CONFIGURAÇÃO DE RETRY === 
 MAX_RETRIES = 3
@@ -1316,4 +1300,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
