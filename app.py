@@ -965,17 +965,7 @@ def main():
         st.error(f"❌ Erro ao carregar dados: {e}")
 
 # 🚀 INICIAR APLICAÇÃO - CONFIGURAÇÃO PARA RAILWAY
+# 🚀 INICIAR APLICAÇÃO
 if __name__ == "__main__":
-    # Configuração para Railway
-    port = os.environ.get("PORT", "8000")
-    
-    from streamlit.web import cli as stcli
-    sys.argv = [
-        "streamlit", "run", __file__,
-        "--server.port", port,
-        "--server.address", "0.0.0.0",
-        "--server.headless", "true",
-        "--browser.serverAddress", "0.0.0.0",
-        "--global.developmentMode", "false"
-    ]
-    stcli.main()
+    main()
+
