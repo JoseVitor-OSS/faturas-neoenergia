@@ -20,9 +20,7 @@ import zipfile
 import io
 import sys
 
-import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import os
+
 
 # === CONFIGURAÇÃO DE RETRY === 
 MAX_RETRIES = 3
@@ -1059,6 +1057,7 @@ if __name__ == "__main__":
     else:
         # ✅ Executar aplicação normalmente
         main()
+
 
 
 
