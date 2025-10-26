@@ -371,6 +371,12 @@ def iniciar_navegador(headless=True):
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option('useAutomationExtension', False)
     
+    # Configurações específicas para Railway
+    if 'RAILWAY_ENVIRONMENT' in os.environ:
+        chrome_options.binary_location = "/usr/bin/google-chrome"
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--remote-debugging-port=9222")
+    
     try:
         driver = webdriver.Chrome(options=chrome_options)
         driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
@@ -378,60 +384,6 @@ def iniciar_navegador(headless=True):
     except Exception as e:
         st.error(f"Erro ao iniciar navegador: {e}")
         return None
-
-# ----------------------------
-# Função para fazer requisições com retry
-# ----------------------------
-def fazer_requisicao_com_retry(url, headers=None, params=None, method='GET', 
-                                 max_retries=MAX_RETRIES, 
-                                 initial_delay=RETRY_DELAY,
-                                 backoff_factor=RETRY_BACKOFF,
-                                 skip_retry_errors=None):
-    if skip_retry_errors is None:
-        skip_retry_errors = ERRORS_SEM_RETRY
-    
-    for attempt in range(max_retries):
-        try:
-            if method.upper() == 'GET':
-                response = requests.get(url, headers=headers, params=params, timeout=90)
-            else:
-                response = requests.post(url, headers=headers, json=params, timeout=90)
-            
-            if response.status_code == 200:
-                return response
-            
-            response_text = response.text.lower()
-            should_skip_retry = any(error in response_text for error in skip_retry_errors)
-            
-            if should_skip_retry:
-                return response
-            
-            if response.status_code == 500:
-                current_delay = min(initial_delay * (backoff_factor ** attempt), MAX_DELAY)
-                if attempt < max_retries - 1:
-                    time.sleep(current_delay)
-                    continue
-                else:
-                    return response
-            
-            return response
-            
-        except requests.exceptions.Timeout:
-            current_delay = min(initial_delay * (backoff_factor ** attempt), MAX_DELAY)
-            if attempt < max_retries - 1:
-                time.sleep(current_delay)
-                continue
-            else:
-                raise
-        except requests.exceptions.ConnectionError:
-            current_delay = min(initial_delay * (backoff_factor ** attempt), MAX_DELAY)
-            if attempt < max_retries - 1:
-                time.sleep(current_delay)
-                continue
-            else:
-                raise
-    
-    return None
 
 # ----------------------------
 # Função para verificar token no storage
@@ -1057,6 +1009,7 @@ if __name__ == "__main__":
     else:
         # ✅ Executar aplicação normalmente
         main()
+
 
 
 
