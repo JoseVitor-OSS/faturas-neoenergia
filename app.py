@@ -19,7 +19,14 @@ from selenium.webdriver.chrome.options import Options
 from urllib.parse import urlencode
 import zipfile
 import io
+import os
+import sys
 
+# FORÇAR execução como Streamlit se detectar ambiente Railway
+if __name__ != "__main__" and "RAILWAY" in os.environ:
+    os.system(f"streamlit run {__file__} --server.port={os.environ.get('PORT', '8000')} --server.address=0.0.0.0")
+    sys.exit(0)
+    
 # ----------------------------
 # Configurações iniciais
 # ----------------------------
@@ -1309,6 +1316,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
