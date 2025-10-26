@@ -272,28 +272,38 @@ def autorizar_google():
     try:
         from google.oauth2.service_account import Credentials
         
+        st.write("🔍 Iniciando autenticação...")
+        
         # No Streamlit Cloud
         if hasattr(st, 'secrets') and 'gcp_service_account' in st.secrets:
+            st.write("✅ Secrets encontrados no Streamlit Cloud")
+            
             service_account_info = dict(st.secrets['gcp_service_account'])
+            
+            # Verificar se temos as chaves necessárias
+            required_keys = ['private_key', 'client_email', 'project_id']
+            missing_keys = [key for key in required_keys if key not in service_account_info]
+            
+            if missing_keys:
+                st.error(f"❌ Chaves faltando nos secrets: {missing_keys}")
+                return None
+            
             creds = Credentials.from_service_account_info(
                 service_account_info,
                 scopes=["https://www.googleapis.com/auth/spreadsheets", 
                        "https://www.googleapis.com/auth/drive"]
             )
             gc = gspread.authorize(creds)
-            st.success("✅ Conectado ao Google Sheets via Service Account")
-            return gc
-        
-        # Para desenvolvimento local (opcional)
-        elif os.path.exists("service-account.json"):
-            creds = Credentials.from_service_account_file(
-                "service-account.json",
-                scopes=["https://www.googleapis.com/auth/spreadsheets", 
-                       "https://www.googleapis.com/auth/drive"]
-            )
-            gc = gspread.authorize(creds)
-            st.success("✅ Conectado ao Google Sheets (arquivo local)")
-            return gc
+            
+            # Testar a conexão
+            try:
+                # Tentar listar planilhas para verificar se está funcionando
+                gc.list_spreadsheet_files()
+                st.success("✅ Conectado ao Google Sheets via Service Account")
+                return gc
+            except Exception as test_error:
+                st.error(f"❌ Erro ao testar conexão: {test_error}")
+                return None
         
         else:
             st.error("""
@@ -302,14 +312,24 @@ def autorizar_google():
             **Para Streamlit Cloud:**
             - Adicione as credenciais da Service Account em Settings → Secrets
             
-            **Para desenvolvimento local:**
-            - Coloque o arquivo JSON como 'service-account.json' na pasta do projeto
+            **Formato necessário:**
+            ```toml
+            [gcp_service_account]
+            type = "service_account"
+            project_id = "seu-project"
+            private_key_id = "abc123..."
+            private_key = "-----BEGIN PRIVATE KEY-----\\n..."
+            client_email = "email@projeto.iam.gserviceaccount.com"
+            client_id = "123456789"
+            auth_uri = "https://accounts.google.com/o/oauth2/auth"
+            token_uri = "https://oauth2.googleapis.com/token"
+            auth_provider_x509_cert_url = "https://www.googleapis.com/oauth2/v1/certs"
+            ```
             """)
             return None
             
     except Exception as e:
         st.error(f"❌ Erro na autenticação Google Sheets: {e}")
-        st.error("Verifique se compartilhou a planilha com o email da Service Account")
         return None
 
 # ----------------------------
@@ -1058,6 +1078,16 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
 def main():
     st.sidebar.header("⚙️ Configurações do Scraper")
     
+    # Debug: verificar se secrets estão carregados
+    if hasattr(st, 'secrets'):
+        st.sidebar.write("🔐 Secrets carregados:", list(st.secrets.keys()))
+    else:
+        st.sidebar.write("🔐 Nenhum secret encontrado")
+    
+    # Configurações do usuário
+    headless = st.sidebar.checkbox("Modo Headless (sem interface gráfica)", value=False)
+    st.sidebar.header("⚙️ Configurações do Scraper")
+    
     # Configurações do usuário
     headless = st.sidebar.checkbox("Modo Headless (sem interface gráfica)", value=False)
     
@@ -1285,6 +1315,7 @@ def main():
     except Exception as e:
         st.error(f"❌ Erro ao carregar dados: {e}")
         st.exception(e)
+
 
 
 
