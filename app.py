@@ -268,53 +268,30 @@ def exibir_secao_downloads():
 # ==================== AUTENTICAÇÃO GOOGLE ====================
 @st.cache_resource
 def autorizar_google():
-    """Versão simplificada para debug"""
+    """Autenticação simples com Service Account"""
     try:
         from google.oauth2.service_account import Credentials
-        import gspread
         
-        st.info("🔄 Tentando conectar ao Google Sheets...")
+        # No Streamlit Cloud
+        if hasattr(st, 'secrets') and 'gcp_service_account' in st.secrets:
+            service_account_info = dict(st.secrets['gcp_service_account'])
+            creds = Credentials.from_service_account_info(
+                service_account_info,
+                scopes=["https://www.googleapis.com/auth/spreadsheets", 
+                       "https://www.googleapis.com/auth/drive"]
+            )
+            gc = gspread.authorize(creds)
+            st.success("✅ Conectado ao Google Sheets via Service Account")
+            return gc
         
-        # Verificar se secrets existem
-        if not hasattr(st, 'secrets') or 'gcp_service_account' not in st.secrets:
-            st.error("❌ Nenhuma credencial encontrada nos Secrets")
-            st.info("""
-            **Para configurar:**
-            1. Vá em Settings → Secrets no Streamlit Cloud
-            2. Adicione as credenciais da Service Account no formato:
-            ```toml
-            [gcp_service_account]
-            type = "service_account"
-            project_id = "..."
-            private_key_id = "..."
-            private_key = "-----BEGIN PRIVATE KEY-----\\n..."
-            client_email = "..."
-            client_id = "..."
-            ```
-            """)
+        else:
+            st.error("🔐 Configure as credenciais da Service Account em Settings → Secrets")
             return None
-        
-        # Obter credenciais
-        secrets = st.secrets['gcp_service_account']
-        st.write("📋 Credenciais carregadas")
-        
-        # Criar credenciais
-        creds = Credentials.from_service_account_info(
-            secrets,
-            scopes=["https://www.googleapis.com/auth/spreadsheets", 
-                   "https://www.googleapis.com/auth/drive"]
-        )
-        
-        # Autorizar
-        gc = gspread.authorize(creds)
-        st.success("✅ Autenticado com sucesso!")
-        
-        return gc
-        
+            
     except Exception as e:
-        st.error(f"❌ Erro de autenticação: {str(e)}")
+        st.error(f"❌ Erro na autenticação: {e}")
         return None
-
+        
 # ----------------------------
 # Configuração do Selenium
 # ----------------------------
@@ -1298,6 +1275,7 @@ def main():
     except Exception as e:
         st.error(f"❌ Erro ao carregar dados: {e}")
         st.exception(e)
+
 
 
 
