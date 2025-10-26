@@ -278,28 +278,64 @@ def exibir_secao_downloads():
 # Função de autenticação Google Sheets
 # ----------------------------
 def autorizar_google():
-    """Autenticação usando variáveis de ambiente do Railway"""
+    """Debug completo das variáveis de ambiente"""
+    
+    # DEBUG: Mostrar TODAS as variáveis de ambiente disponíveis
+    st.write("🔍 **DEBUG - Variáveis de Ambiente no Railway:**")
+    
+    # Filtrar variáveis relacionadas ao Google
+    google_vars = {k: v for k, v in os.environ.items() if any(x in k.upper() for x in ['GCP', 'GOOGLE', 'SERVICE'])}
+    
+    if google_vars:
+        st.write("✅ **Variáveis Google encontradas:**")
+        for var_name, var_value in google_vars.items():
+            # Mostrar valor parcial para privacidade
+            display_value = var_value[:50] + "..." if len(var_value) > 50 else var_value
+            st.write(f"   - `{var_name}`: `{display_value}`")
+    else:
+        st.write("❌ **Nenhuma variável Google encontrada**")
+    
+    # Verificar nomes EXATOS das variáveis
+    st.write("🔍 **Verificando nomes específicos:**")
+    target_vars = ['GCP_PROJECT_ID', 'GCP_PRIVATE_KEY', 'GCP_CLIENT_EMAIL']
+    for var in target_vars:
+        exists = var in os.environ
+        st.write(f"   - `{var}`: {'✅ ENCONTRADA' if exists else '❌ NÃO ENCONTRADA'}")
+    
     try:
         from google.oauth2.service_account import Credentials
         
-        st.write("🔍 Verificando credenciais...")
+        # Tentar com nomes diferentes que o Railway pode usar
+        possible_vars = {
+            'project_id': ['GCP_PROJECT_ID', 'GOOGLE_PROJECT_ID', 'PROJECT_ID'],
+            'private_key': ['GCP_PRIVATE_KEY', 'GOOGLE_PRIVATE_KEY', 'PRIVATE_KEY'], 
+            'client_email': ['GCP_CLIENT_EMAIL', 'GOOGLE_CLIENT_EMAIL', 'CLIENT_EMAIL']
+        }
         
-        # Método 1: Variáveis de ambiente individuais do Railway
-        required_vars = ['GCP_PROJECT_ID', 'GCP_PRIVATE_KEY', 'GCP_CLIENT_EMAIL']
-        if all(var in os.environ for var in required_vars):
-            st.write("✅ Credenciais encontradas nas variáveis de ambiente")
+        found_vars = {}
+        for key, possible_names in possible_vars.items():
+            for name in possible_names:
+                if name in os.environ:
+                    found_vars[key] = os.environ[name]
+                    st.success(f"✅ Usando `{name}` para {key}")
+                    break
+        
+        if len(found_vars) >= 3:  # Temos todas necessárias
+            st.success("🎯 **Todas as credenciais encontradas!**")
             
             service_account_info = {
                 "type": "service_account",
-                "project_id": os.environ['GCP_PROJECT_ID'],
-                "private_key_id": os.environ.get('GCP_PRIVATE_KEY_ID', ''),
-                "private_key": os.environ['GCP_PRIVATE_KEY'].replace('\\n', '\n'),
-                "client_email": os.environ['GCP_CLIENT_EMAIL'],
-                "client_id": os.environ.get('GCP_CLIENT_ID', ''),
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "project_id": found_vars['project_id'],
+                "private_key": found_vars['private_key'].replace('\\n', '\n'),
+                "client_email": found_vars['client_email'],
                 "token_uri": "https://oauth2.googleapis.com/token",
-                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
             }
+            
+            # Adicionar campos opcionais se existirem
+            if 'GCP_PRIVATE_KEY_ID' in os.environ:
+                service_account_info['private_key_id'] = os.environ['GCP_PRIVATE_KEY_ID']
+            if 'GCP_CLIENT_ID' in os.environ:
+                service_account_info['client_id'] = os.environ['GCP_CLIENT_ID']
             
             creds = Credentials.from_service_account_info(
                 service_account_info,
@@ -307,47 +343,15 @@ def autorizar_google():
                        "https://www.googleapis.com/auth/drive"]
             )
             gc = gspread.authorize(creds)
-            st.success("✅ Conectado ao Google Sheets!")
+            st.success("✅ **Conectado ao Google Sheets!**")
             return gc
-        
-        # Método 2: JSON completo em uma variável
-        elif 'GCP_SERVICE_ACCOUNT_JSON' in os.environ:
-            st.write("✅ JSON completo encontrado")
-            import json
-            service_account_info = json.loads(os.environ['GCP_SERVICE_ACCOUNT_JSON'])
-            creds = Credentials.from_service_account_info(service_account_info)
-            gc = gspread.authorize(creds)
-            st.success("✅ Conectado ao Google Sheets!")
-            return gc
-        
         else:
-            st.error("""
-            🔐 **Credenciais não configuradas!**
-            
-            **Para configurar no Railway:**
-            
-            1. Vá em **Variables**
-            2. Adicione estas variáveis:
-            
-            **GCP_PROJECT_ID** = seu-project-id
-            **GCP_PRIVATE_KEY** = -----BEGIN PRIVATE KEY-----\\nMII...\\n-----END PRIVATE KEY-----\\n
-            **GCP_CLIENT_EMAIL** = seu-email@projeto.iam.gserviceaccount.com
-            
-            **Opcionais:**
-            GCP_PRIVATE_KEY_ID = abc123...
-            GCP_CLIENT_ID = 123456789
-            """)
-            
-            # Mostrar debug das variáveis atuais
-            st.info("🔍 Variáveis de ambiente atuais:")
-            for var in ['GCP_PROJECT_ID', 'GCP_PRIVATE_KEY', 'GCP_CLIENT_EMAIL']:
-                exists = "✅" if var in os.environ else "❌"
-                st.write(f"{exists} {var}: {'[CONFIGURADA]' if var in os.environ else '[NÃO CONFIGURADA]'}")
-            
+            st.error("❌ **Credenciais incompletas**")
+            st.info(f"Encontradas: {list(found_vars.keys())}")
             return None
             
     except Exception as e:
-        st.error(f"❌ Erro na autenticação: {str(e)}")
+        st.error(f"❌ **Erro na autenticação:** {str(e)}")
         return None
 
 # ----------------------------
@@ -1051,6 +1055,7 @@ if __name__ == "__main__":
     else:
         # ✅ Executar aplicação normalmente
         main()
+
 
 
 
