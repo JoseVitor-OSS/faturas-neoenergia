@@ -267,70 +267,49 @@ def exibir_secao_downloads():
 # ==================== AUTENTICAÇÃO GOOGLE ====================
 @st.cache_resource
 def autorizar_google():
-    """Autenticação OAuth 2.0 para Streamlit Cloud"""
-    creds = None
-    
-    # Tentar carregar token existente
-    if os.path.exists("token.pickle"):
-        with open("token.pickle", "rb") as token:
-            creds = pickle.load(token)
-    
-    # Se não tem credenciais válidas, fazer novo login
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            # Configurar OAuth flow com secrets do Streamlit
-            flow = Flow.from_client_config(
-                client_config={
-                    "web": {
-                        "client_id": st.secrets["client_id"],
-                        "client_secret": st.secrets["client_secret"],
-                        "auth_uri": st.secrets["auth_uri"],
-                        "token_uri": st.secrets["token_uri"],
-                        "redirect_uris": st.secrets["redirect_uris"]
-                    }
-                },
+    """Autenticação simples com Service Account"""
+    try:
+        from google.oauth2.service_account import Credentials
+        
+        # No Streamlit Cloud
+        if hasattr(st, 'secrets') and 'gcp_service_account' in st.secrets:
+            service_account_info = dict(st.secrets['gcp_service_account'])
+            creds = Credentials.from_service_account_info(
+                service_account_info,
                 scopes=["https://www.googleapis.com/auth/spreadsheets", 
                        "https://www.googleapis.com/auth/drive"]
             )
+            gc = gspread.authorize(creds)
+            st.success("✅ Conectado ao Google Sheets via Service Account")
+            return gc
+        
+        # Para desenvolvimento local (opcional)
+        elif os.path.exists("service-account.json"):
+            creds = Credentials.from_service_account_file(
+                "service-account.json",
+                scopes=["https://www.googleapis.com/auth/spreadsheets", 
+                       "https://www.googleapis.com/auth/drive"]
+            )
+            gc = gspread.authorize(creds)
+            st.success("✅ Conectado ao Google Sheets (arquivo local)")
+            return gc
+        
+        else:
+            st.error("""
+            🔐 Credenciais não encontradas!
             
-            # Gerar URL de autorização
-            auth_url, _ = flow.authorization_url(prompt='consent')
+            **Para Streamlit Cloud:**
+            - Adicione as credenciais da Service Account em Settings → Secrets
             
-            st.markdown(f"""
-            ### 🔐 Autorização Necessária
-            
-            1. **Clique no link abaixo** para autorizar o acesso
-            2. **Faça login** na sua conta Google
-            3. **Copie o código de autorização** e cole abaixo
-            
-            [**👉 CLIQUE AQUI PARA AUTORIZAR 👈**]({auth_url})
+            **Para desenvolvimento local:**
+            - Coloque o arquivo JSON como 'service-account.json' na pasta do projeto
             """)
+            return None
             
-            # Input para o código de autorização
-            auth_code = st.text_input("Cole o código de autorização aqui:")
-            
-            if auth_code:
-                with st.spinner("🔗 Conectando ao Google..."):
-                    try:
-                        flow.fetch_token(code=auth_code)
-                        creds = flow.credentials
-                        
-                        # Salvar token para uso futuro
-                        with open("token.pickle", "wb") as token:
-                            pickle.dump(creds, token)
-                        
-                        st.success("✅ Autenticação realizada com sucesso!")
-                        st.rerun()
-                        
-                    except Exception as e:
-                        st.error(f"❌ Erro na autenticação: {e}")
-                        return None
-            else:
-                st.stop()  # Para a execução até ter o código
-    
-    return gspread.authorize(creds)
+    except Exception as e:
+        st.error(f"❌ Erro na autenticação Google Sheets: {e}")
+        st.error("Verifique se compartilhou a planilha com o email da Service Account")
+        return None
 
 # ----------------------------
 # Configuração do Selenium
@@ -1188,6 +1167,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
