@@ -173,6 +173,22 @@ def criar_zip_pdfs(diretorio_base):
     zip_buffer.seek(0)
     return zip_buffer
 
+
+# === CONFIGURAÇÃO DE RETRY === 
+MAX_RETRIES = 3
+RETRY_DELAY = 5  # segundos
+RETRY_BACKOFF = 1.5
+MAX_DELAY = 30
+
+# Erros que NÃO devem ter retry
+ERRORS_SEM_RETRY = [
+    "fatura indisponível no canal digital",
+    "fatura não disponível", 
+    "documento não relacionado",
+    "acesso negado",
+    "não encontrado"
+]
+
 # ----------------------------
 # Função para listar arquivos PDF baixados
 # ----------------------------
@@ -1293,6 +1309,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
