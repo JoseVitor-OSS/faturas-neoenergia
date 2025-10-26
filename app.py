@@ -278,14 +278,29 @@ def exibir_secao_downloads():
 # Função de autenticação Google Sheets
 # ----------------------------
 def autorizar_google():
-    """Autenticação com Service Account para Railway"""
+    """Autenticação usando variáveis de ambiente do Railway"""
     try:
         from google.oauth2.service_account import Credentials
         
-        # No Railway - verificar secrets do Streamlit
-        if hasattr(st, 'secrets') and 'gcp_service_account' in st.secrets:
-            st.write("✅ Secrets encontrados no Streamlit")
-            service_account_info = dict(st.secrets['gcp_service_account'])
+        st.write("🔍 Verificando credenciais...")
+        
+        # Método 1: Variáveis de ambiente individuais do Railway
+        required_vars = ['GCP_PROJECT_ID', 'GCP_PRIVATE_KEY', 'GCP_CLIENT_EMAIL']
+        if all(var in os.environ for var in required_vars):
+            st.write("✅ Credenciais encontradas nas variáveis de ambiente")
+            
+            service_account_info = {
+                "type": "service_account",
+                "project_id": os.environ['GCP_PROJECT_ID'],
+                "private_key_id": os.environ.get('GCP_PRIVATE_KEY_ID', ''),
+                "private_key": os.environ['GCP_PRIVATE_KEY'].replace('\\n', '\n'),
+                "client_email": os.environ['GCP_CLIENT_EMAIL'],
+                "client_id": os.environ.get('GCP_CLIENT_ID', ''),
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
+            }
+            
             creds = Credentials.from_service_account_info(
                 service_account_info,
                 scopes=["https://www.googleapis.com/auth/spreadsheets", 
@@ -295,43 +310,44 @@ def autorizar_google():
             st.success("✅ Conectado ao Google Sheets!")
             return gc
         
-        # Fallback: verificar variáveis de ambiente do Railway
-        elif 'GCP_SERVICE_ACCOUNT' in os.environ:
-            st.write("✅ Usando variáveis de ambiente do Railway")
+        # Método 2: JSON completo em uma variável
+        elif 'GCP_SERVICE_ACCOUNT_JSON' in os.environ:
+            st.write("✅ JSON completo encontrado")
             import json
-            service_account_json = os.environ['GCP_SERVICE_ACCOUNT']
-            service_account_info = json.loads(service_account_json)
-            creds = Credentials.from_service_account_info(
-                service_account_info,
-                scopes=["https://www.googleapis.com/auth/spreadsheets", 
-                       "https://www.googleapis.com/auth/drive"]
-            )
+            service_account_info = json.loads(os.environ['GCP_SERVICE_ACCOUNT_JSON'])
+            creds = Credentials.from_service_account_info(service_account_info)
             gc = gspread.authorize(creds)
-            st.success("✅ Conectado ao Google Sheets via variáveis de ambiente!")
+            st.success("✅ Conectado ao Google Sheets!")
             return gc
         
         else:
             st.error("""
-            🔐 Credenciais não encontradas!
+            🔐 **Credenciais não configuradas!**
             
             **Para configurar no Railway:**
             
-            **Opção 1 (Recomendada):** Adicione as variáveis individualmente:
-            - Vá em **Variables** e adicione:
-              - `GCP_TYPE` = "service_account"
-              - `GCP_PROJECT_ID` = "seu-project-id"
-              - `GCP_PRIVATE_KEY_ID` = "abc123..."
-              - `GCP_PRIVATE_KEY` = "-----BEGIN PRIVATE KEY-----\\n..."
-              - `GCP_CLIENT_EMAIL` = "email@projeto.iam.gserviceaccount.com"
-              - `GCP_CLIENT_ID` = "123456789"
+            1. Vá em **Variables**
+            2. Adicione estas variáveis:
             
-            **Opção 2:** Adicione o JSON completo:
-            - `GCP_SERVICE_ACCOUNT` = '{"type": "service_account", "project_id": "...", ...}'
+            **GCP_PROJECT_ID** = seu-project-id
+            **GCP_PRIVATE_KEY** = -----BEGIN PRIVATE KEY-----\\nMII...\\n-----END PRIVATE KEY-----\\n
+            **GCP_CLIENT_EMAIL** = seu-email@projeto.iam.gserviceaccount.com
+            
+            **Opcionais:**
+            GCP_PRIVATE_KEY_ID = abc123...
+            GCP_CLIENT_ID = 123456789
             """)
+            
+            # Mostrar debug das variáveis atuais
+            st.info("🔍 Variáveis de ambiente atuais:")
+            for var in ['GCP_PROJECT_ID', 'GCP_PRIVATE_KEY', 'GCP_CLIENT_EMAIL']:
+                exists = "✅" if var in os.environ else "❌"
+                st.write(f"{exists} {var}: {'[CONFIGURADA]' if var in os.environ else '[NÃO CONFIGURADA]'}")
+            
             return None
             
     except Exception as e:
-        st.error(f"❌ Erro na autenticação: {e}")
+        st.error(f"❌ Erro na autenticação: {str(e)}")
         return None
 
 # ----------------------------
@@ -1035,6 +1051,7 @@ if __name__ == "__main__":
     else:
         # ✅ Executar aplicação normalmente
         main()
+
 
 
 
