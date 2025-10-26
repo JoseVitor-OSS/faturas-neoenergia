@@ -18,6 +18,7 @@ from selenium.webdriver.chrome.service import Service
 from urllib.parse import urlencode
 import zipfile
 import io
+import sys 
 
 # 🚨 SOLUÇÃO DE EMERGÊNCIA - Forçar Streamlit
 if __name__ == "__main__" and not any("streamlit" in arg for arg in sys.argv):
@@ -1139,4 +1140,5 @@ def main():
 # 🚀 INICIAR APLICAÇÃO
 if __name__ == "__main__":
     main()
+
 
