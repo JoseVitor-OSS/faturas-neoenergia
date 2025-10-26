@@ -267,29 +267,23 @@ def exibir_secao_downloads():
 # ==================== AUTENTICAÇÃO GOOGLE ====================
 @st.cache_resource
 def autorizar_google():
+    """Autenticação usando Service Account do Google"""
     try:
-        # Verificar se está no Streamlit Cloud (com secrets)
-        if 'GOOGLE_PROJECT_ID' in st.secrets:
-            # Configuração para Service Account no deploy
-            credentials_dict = {
-                "type": "service_account",
-                "project_id": st.secrets["GOOGLE_PROJECT_ID"],
-                "private_key_id": st.secrets["GOOGLE_PRIVATE_KEY_ID"],
-                "private_key": st.secrets["GOOGLE_PRIVATE_KEY"].replace('\\n', '\n'),
-                "client_email": st.secrets["GOOGLE_CLIENT_EMAIL"],
-                "client_id": st.secrets["GOOGLE_CLIENT_ID"],
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-            }
-            
-            import google.oauth2.service_account as service_account
-            creds = service_account.Credentials.from_service_account_info(credentials_dict)
-            return gspread.authorize(creds)
+        # Para Streamlit Cloud (secrets)
+        if 'gcp_service_account' in st.secrets:
+            service_account_info = dict(st.secrets['gcp_service_account'])
+            creds = Credentials.from_service_account_info(service_account_info)
+        
+        # Para desenvolvimento local (arquivo JSON)
+        elif os.path.exists("service_account.json"):
+            creds = Credentials.from_service_account_file("service_account.json")
+        
         else:
-            # Modo desenvolvimento local
-            st.warning("🔧 Modo desenvolvimento - configure as credenciais")
+            st.error("❌ Credenciais do Google não encontradas")
             return None
-            
+        
+        return gspread.authorize(creds)
+        
     except Exception as e:
         st.error(f"❌ Erro na autenticação Google: {e}")
         return None
@@ -1150,4 +1144,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
