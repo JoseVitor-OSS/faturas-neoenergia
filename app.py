@@ -1,9 +1,7 @@
 import streamlit as st
 import gspread
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
+from google.oauth2.service_account import Credentials
 import pandas as pd
-import pickle
 import os
 import time
 import base64
@@ -16,51 +14,26 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from datetime import datetime
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from urllib.parse import urlencode
 import zipfile
 import io
-import os
-import sys
-import subprocess
 
+# === CONFIGURAÇÃO DE RETRY === 
+MAX_RETRIES = 3
+RETRY_DELAY = 5  # segundos
+RETRY_BACKOFF = 1.5
+MAX_DELAY = 30
 
-import os
-import sys
-import fcntl
-import atexit
+# Erros que NÃO devem ter retry
+ERRORS_SEM_RETRY = [
+    "fatura indisponível no canal digital",
+    "fatura não disponível",
+    "documento não relacionado",
+    "acesso negado",
+    "não encontrado"
+]
 
-# 🔒 IMPEDIR EXECUÇÃO DUPLICADA
-lock_file = "/tmp/streamlit.lock"
-
-def acquire_lock():
-    try:
-        lock_fd = open(lock_file, 'w')
-        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        return lock_fd
-    except (IOError, BlockingIOError):
-        print("⏹️ Outra instância já está em execução. Saindo...")
-        sys.exit(0)
-
-# Adquirir lock
-lock_fd = acquire_lock()
-atexit.register(lambda: lock_fd.close())
-
-# 🚀 AGORA INICIAR STREAMLIT
-if __name__ == "__main__":
-    from streamlit.web import cli as stcli
-    
-    port = os.environ.get("PORT", "8000")
-    sys.argv = [
-        "streamlit", "run", __file__,
-        "--server.port", port,
-        "--server.address", "0.0.0.0",
-        "--server.headless", "true",
-        "--global.developmentMode", "false"
-    ]
-    
-    print(f"🎯 INICIANDO STREAMLIT NA PORTA {port}...")
-    stcli.main()
-    
 # ----------------------------
 # Configurações iniciais
 # ----------------------------
@@ -142,7 +115,6 @@ div[data-baseweb="popover"] {
     color: #02231C !important;
 }
 
-
 /* ===== Botões ===== */
 .stButton>button {
     background-color: #00FF88 !important;
@@ -207,28 +179,11 @@ def criar_zip_pdfs(diretorio_base):
             for file in files:
                 if file.endswith('.pdf'):
                     file_path = os.path.join(root, file)
-                    # Usar caminho relativo no ZIP
                     arcname = os.path.relpath(file_path, diretorio_base)
                     zip_file.write(file_path, arcname)
     
     zip_buffer.seek(0)
     return zip_buffer
-
-
-# === CONFIGURAÇÃO DE RETRY === 
-MAX_RETRIES = 3
-RETRY_DELAY = 5  # segundos
-RETRY_BACKOFF = 1.5
-MAX_DELAY = 30
-
-# Erros que NÃO devem ter retry
-ERRORS_SEM_RETRY = [
-    "fatura indisponível no canal digital",
-    "fatura não disponível", 
-    "documento não relacionado",
-    "acesso negado",
-    "não encontrado"
-]
 
 # ----------------------------
 # Função para listar arquivos PDF baixados
@@ -274,13 +229,12 @@ def exibir_secao_downloads():
     
     st.subheader("📥 Arquivos Baixados")
     
-    # Estatísticas
     total_arquivos = sum(len(pdfs) for pdfs in pdfs_por_mes.values())
     total_tamanho = sum(
         pdf['tamanho'] 
         for mes_pdfs in pdfs_por_mes.values() 
         for pdf in mes_pdfs
-    ) / (1024 * 1024)  # Converter para MB
+    ) / (1024 * 1024)
     
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -290,7 +244,6 @@ def exibir_secao_downloads():
     with col3:
         st.metric("Tamanho Total", f"{total_tamanho:.2f} MB")
     
-    # Botão para download de todos os arquivos em ZIP
     if total_arquivos > 0:
         zip_buffer = criar_zip_pdfs(diretorio_base)
         
@@ -302,7 +255,6 @@ def exibir_secao_downloads():
             use_container_width=True
         )
     
-    # Exibir arquivos por mês
     for mes, pdfs in pdfs_por_mes.items():
         with st.expander(f"📅 Mês: {mes} ({len(pdfs)} arquivos)"):
             for pdf in pdfs:
@@ -321,14 +273,12 @@ def exibir_secao_downloads():
                             key=f"btn_{pdf['nome']}"
                         )
 
-# ==================== AUTENTICAÇÃO GOOGLE ====================
-@st.cache_resource
+# ----------------------------
+# Função de autenticação Google Sheets
+# ----------------------------
 def autorizar_google():
     """Autenticação simples com Service Account"""
     try:
-        from google.oauth2.service_account import Credentials
-        
-        # No Streamlit Cloud
         if hasattr(st, 'secrets') and 'gcp_service_account' in st.secrets:
             service_account_info = dict(st.secrets['gcp_service_account'])
             creds = Credentials.from_service_account_info(
@@ -337,89 +287,46 @@ def autorizar_google():
                        "https://www.googleapis.com/auth/drive"]
             )
             gc = gspread.authorize(creds)
-            st.success("✅ Conectado ao Google Sheets via Service Account")
             return gc
-        
-        # Para desenvolvimento local (opcional)
-        elif os.path.exists("service-account.json"):
-            creds = Credentials.from_service_account_file(
-                "service-account.json",
-                scopes=["https://www.googleapis.com/auth/spreadsheets", 
-                       "https://www.googleapis.com/auth/drive"]
-            )
-            gc = gspread.authorize(creds)
-            st.success("✅ Conectado ao Google Sheets (arquivo local)")
-            return gc
-        
         else:
-            st.error("""
-            🔐 Credenciais não encontradas!
-            
-            **Para Streamlit Cloud:**
-            - Adicione as credenciais da Service Account em Settings → Secrets
-            
-            **Para desenvolvimento local:**
-            - Coloque o arquivo JSON como 'service-account.json' na pasta do projeto
-            """)
+            st.error("🔐 Credenciais não encontradas nos Secrets")
             return None
             
     except Exception as e:
-        st.error(f"❌ Erro na autenticação Google Sheets: {e}")
-        st.error("Verifique se compartilhou a planilha com o email da Service Account")
+        st.error(f"❌ Erro na autenticação: {e}")
         return None
 
 # ----------------------------
 # Configuração do Selenium
 # ----------------------------
 def iniciar_navegador(headless=True):
-    from selenium.webdriver.chrome.service import Service
-    from selenium.webdriver.chrome.options import Options
-    
     chrome_options = Options()
-    
     if headless:
         chrome_options.add_argument("--headless=new")
-    
-    # Configurações essenciais para container
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--remote-debugging-port=9222")
     chrome_options.add_argument("--window-size=1920,1080")
-    
-    # Configurações para evitar detecção
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option('useAutomationExtension', False)
     
     try:
-        # No Railway, usar ChromeDriver direto (já instalado no Dockerfile)
-        service = Service("/usr/local/bin/chromedriver")
-        driver = webdriver.Chrome(service=service, options=chrome_options)
-        
+        driver = webdriver.Chrome(options=chrome_options)
         driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-        
         return driver
-        
     except Exception as e:
         st.error(f"Erro ao iniciar navegador: {e}")
-        
-        # Fallback: tentar sem Service
-        try:
-            driver = webdriver.Chrome(options=chrome_options)
-            return driver
-        except Exception as e2:
-            st.error(f"Também falhou: {e2}")
-            return None
+        return None
 
+# ----------------------------
+# Função para fazer requisições com retry
+# ----------------------------
 def fazer_requisicao_com_retry(url, headers=None, params=None, method='GET', 
                                  max_retries=MAX_RETRIES, 
                                  initial_delay=RETRY_DELAY,
                                  backoff_factor=RETRY_BACKOFF,
                                  skip_retry_errors=None):
-    """
-    Faz uma requisição HTTP com mecanismo de retry, exceto para erros específicos
-    """
     if skip_retry_errors is None:
         skip_retry_errors = ERRORS_SEM_RETRY
     
@@ -430,28 +337,23 @@ def fazer_requisicao_com_retry(url, headers=None, params=None, method='GET',
             else:
                 response = requests.post(url, headers=headers, json=params, timeout=90)
             
-            # Se for sucesso, retorna imediatamente
             if response.status_code == 200:
                 return response
             
-            # VERIFICA SE É ERRO QUE DEVE PULAR RETRY
             response_text = response.text.lower()
             should_skip_retry = any(error in response_text for error in skip_retry_errors)
             
             if should_skip_retry:
                 return response
             
-            # Se for erro 500, tenta novamente
             if response.status_code == 500:
                 current_delay = min(initial_delay * (backoff_factor ** attempt), MAX_DELAY)
-                
                 if attempt < max_retries - 1:
                     time.sleep(current_delay)
                     continue
                 else:
                     return response
             
-            # Para outros erros (400, 404, etc), retorna imediatamente SEM RETRY
             return response
             
         except requests.exceptions.Timeout:
@@ -486,10 +388,9 @@ def verificar_token_storage(navegador, id_distribuidora):
         return False
 
 # ----------------------------
-# Função para limpar documento (remover caracteres não numéricos)
+# Função para limpar documento
 # ----------------------------
 def limpar_documento(documento):
-    """Remove todos os caracteres não numéricos do documento"""
     return re.sub(r'[^0-9]', '', documento)
 
 # ----------------------------
@@ -500,19 +401,16 @@ def parar_execucao():
     st.session_state.executando = False
 
 # ----------------------------
-# Função principal do scraper (SIMPLIFICADA)
+# Função principal do scraper
 # ----------------------------
 def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, mes_atraso, headless=False):
-    # Usar diretório fixo
     diretorio_download = "Neoenergia"
     
-    # Iniciar navegador
     navegador = iniciar_navegador(headless)
     if not navegador:
         st.error("❌ Não foi possível iniciar o navegador")
         return None
     
-    # Listas para resultados
     ucs_retidas = []
     tempos_ucs = []
     ucs_inativas = []
@@ -525,20 +423,14 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
     ucs_sucesso = []
     
     tempo_total_inicio = time.perf_counter()
-    
-    # Criar diretório para downloads
     os.makedirs(diretorio_download, exist_ok=True)
     
-    # Loop principal
     for i in range(len(df_filtrado)):
-        # Verificar se deve parar execução
         if st.session_state.parar_execucao:
             st.warning("⏹️ Execução interrompida pelo usuário")
             break
 
         inicio_uc = time.perf_counter()
-
-        # Atualizar progresso
         progress = (i + 1) / len(df_filtrado)
         progress_bar.progress(progress)
         status_text.text(f"Processando UC {i+1} de {len(df_filtrado)}")
@@ -565,7 +457,7 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
             usuario_api = distribuidoras_map[id_distribuidora]['usuario_api']
             base_url = distribuidoras_map[id_distribuidora]['base_url']
 
-            # === LÓGICA DE LOGIN "INLINE" ===
+            # Lógica de login
             precisa_logar = False
             if i == 0:
                 precisa_logar = True
@@ -665,7 +557,7 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
                 
                 time.sleep(3)
 
-            # Obter token conforme a distribuidora
+            # Obter token
             token = None
             try:
                 if id_distribuidora == 52:
@@ -695,11 +587,11 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
             }
             time.sleep(1)
             
-            # === LÓGICA SEPARADA PARA ELEKTRO ===
+            # Lógica específica para cada distribuidora
             if id_distribuidora == 52:
+                # ELEKTRO
                 uc_info = {'uc': uc_desejada}
-
-                # Obter protocolo - ELEKTRO COM GET
+                
                 url_protocolo = "https://apiseprd.neoenergia.com/protocolo/1.1.0/obterProtocolo"
                 params_protocolo = {
                     "distribuidora": "ELEKTRO",
@@ -712,12 +604,7 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
 
                 try:
                     time.sleep(1)
-                    res_protocolo = fazer_requisicao_com_retry(
-                        url_protocolo, 
-                        headers=headers, 
-                        params=params_protocolo, 
-                        method='GET'
-                    )
+                    res_protocolo = fazer_requisicao_com_retry(url_protocolo, headers=headers, params=params_protocolo, method='GET')
                     
                     if not res_protocolo or res_protocolo.status_code != 200:
                         ucs_erro_sistema.append(uc_desejada)
@@ -735,7 +622,6 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
                     ucs_retidas.append(uc_desejada)
                     continue
 
-                # Buscar faturas - ELEKTRO COM GET
                 url_faturas = "https://apiseprd.neoenergia.com/multilogin/2.0.0/servicos/faturas/ucs/faturas"
                 params_faturas = {
                     "codigo": uc_desejada,
@@ -750,12 +636,7 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
 
                 try:
                     time.sleep(1)
-                    res_faturas = fazer_requisicao_com_retry(
-                        url_faturas, 
-                        headers=headers, 
-                        params=params_faturas, 
-                        method='GET'
-                    )
+                    res_faturas = fazer_requisicao_com_retry(url_faturas, headers=headers, params=params_faturas, method='GET')
                     
                     if not res_faturas or res_faturas.status_code != 200:
                         ucs_erro_sistema.append(uc_desejada)
@@ -775,7 +656,8 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
                     ucs_retidas.append(uc_desejada)
                     continue
 
-            else:  # Demais distribuidoras
+            else:
+                # Demais distribuidoras
                 login_limpo = limpar_documento(login)
                 url_ucs = f'https://{base_url}.neoenergia.com/imoveis/1.1.0/clientes/{login_limpo}/ucs'
                 
@@ -792,12 +674,7 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
 
                 try:
                     time.sleep(1)
-                    res_ucs = fazer_requisicao_com_retry(
-                        url_ucs, 
-                        headers=headers, 
-                        params=params_ucs,
-                        method='GET'
-                    )
+                    res_ucs = fazer_requisicao_com_retry(url_ucs, headers=headers, params=params_ucs, method='GET')
                     
                     if not res_ucs or res_ucs.status_code != 200:
                         ucs_erro_sistema.append(uc_desejada)
@@ -816,7 +693,6 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
                     ucs_retidas.append(uc_desejada)
                     continue
 
-                # Obter protocolo - Demais distribuidoras COM GET
                 url_protocolo = f'https://{base_url}.neoenergia.com/protocolo/1.1.0/obterProtocolo'
                 params_protocolo = {
                     'distribuidora': distribuidora[:4],
@@ -829,12 +705,7 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
 
                 try:
                     time.sleep(1)
-                    res_protocolo = fazer_requisicao_com_retry(
-                        url_protocolo, 
-                        headers=headers, 
-                        params=params_protocolo, 
-                        method='GET'
-                    )
+                    res_protocolo = fazer_requisicao_com_retry(url_protocolo, headers=headers, params=params_protocolo, method='GET')
                     
                     if not res_protocolo or res_protocolo.status_code != 200:
                         ucs_erro_sistema.append(uc_info['uc'])
@@ -856,7 +727,6 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
                     ucs_retidas.append(uc_info['uc'])
                     continue
 
-                # Buscar faturas - Demais distribuidoras COM GET
                 url_faturas = f'https://{base_url}.neoenergia.com/multilogin/2.0.0/servicos/faturas/ucs/faturas'
                 params_faturas = {
                     'codigo': uc_info['uc'],
@@ -873,12 +743,7 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
 
                 try:
                     time.sleep(1)
-                    res_faturas = fazer_requisicao_com_retry(
-                        url_faturas, 
-                        headers=headers, 
-                        params=params_faturas, 
-                        method='GET'
-                    )
+                    res_faturas = fazer_requisicao_com_retry(url_faturas, headers=headers, params=params_faturas, method='GET')
                     
                     if not res_faturas or res_faturas.status_code != 200:
                         ucs_erro_sistema.append(uc_info['uc'])
@@ -892,47 +757,38 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
                     ucs_retidas.append(uc_info['uc'])
                     continue
 
-            # --- Processamento Comum das Faturas ---
+            # Processar faturas
             if not faturas:
                 ucs_sem_fatura.append(uc_info.get('uc', uc_desejada))
                 continue
 
-            # Encontrar fatura mais recente
             try:
                 if id_distribuidora == 52:
                     f_mais_recente = sorted(faturas, key=lambda f: f.get("dataCompetencia", ""), reverse=True)[0]
-                    # Verificar se UC está inativa (ELEKTRO)
                     if f_mais_recente.get("dataCompetencia", "")[:7].replace('-', '/') <= mes_atraso.replace('/', '-'):
                         ucs_inativas.append(uc_info['uc'])
                 else:
                     f_mais_recente = sorted(faturas, key=lambda f: f.get("mesReferencia", ""), reverse=True)[0]
-                    # Verificar se UC está inativa (demais distribuidoras)
                     if f_mais_recente.get("mesReferencia") <= mes_atraso:
                         ucs_inativas.append(uc_info['uc'])
             except IndexError:
                 ucs_sem_fatura.append(uc_info.get('uc', uc_desejada))
                 continue
 
-            # PRINT SIMPLIFICADO
             st.write(f"🔍 Busca {i+1} de {len(df_filtrado)}")
-            if id_distribuidora != 52:
-                st.write(f"✅ Token obtido com sucesso.")
-                st.write(f"🔍 Buscando UCs para {login}...")
-                st.write(f"🔍 {len(ucs)} UCs encontradas no total")
-                st.write(f"✅ UC encontrada: {uc_info['uc']}")
             st.write(f"✅ Protocolo: {protocolo}")
             st.write(f"✅ {len(faturas)} faturas encontradas")
             
-            # Mostrar fatura mais recente
             if id_distribuidora == 52:
-                st.write(f"🧾 Mais recente: {f_mais_recente.get('dataCompetencia')} | Venc: {f_mais_recente.get('dataVencimento')} | Valor: R$ {f_mais_recente.get('valorFatura')}")
+                st.write(f"🧾 Mais recente: {f_mais_recente.get('dataCompetencia')}")
             else:
-                st.write(f"🧾 Mais recente: {f_mais_recente.get('mesReferencia')} | Venc: {f_mais_recente.get('dataVencimento')} | Valor: R$ {f_mais_recente.get('valorEmissao')}")
+                st.write(f"🧾 Mais recente: {f_mais_recente.get('mesReferencia')}")
 
             # Baixar faturas dos meses desejados
             faturas_baixadas_neste_mes = 0
+            meses_lista = [mes.strip() for mes in meses_desejados.split(",")]
             
-            for mes_desejada in meses_desejados:
+            for mes_desejada in meses_lista:
                 fatura_desejada = None
                 
                 if id_distribuidora == 52:
@@ -953,10 +809,9 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
                         ucs_retidas.append(uc_info.get('uc', uc_desejada))
                     continue
 
-                # Download do PDF COM GET
+                # Download do PDF
                 url_pdf = f"https://{base_url}.neoenergia.com/multilogin/2.0.0/servicos/faturas/{numero_fatura}/pdf"
                 
-                # Parâmetros corrigidos conforme código funcional
                 if id_distribuidora == 52:
                     params_pdf = {
                         "codigo": uc_info.get('uc', uc_desejada),
@@ -967,7 +822,7 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
                         "distribuidora": distribuidora,
                         "regiao": regiao,
                         "tipoPerfil": "1",
-                        "documento": login_limpo if 'login_limpo' in locals() else limpar_documento(login),
+                        "documento": limpar_documento(login),
                     }
                 else:
                     params_pdf = {
@@ -979,9 +834,9 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
                         "distribuidora": distribuidora,
                         "regiao": regiao,
                         "tipoPerfil": "1",
-                        "documento": login_limpo if 'login_limpo' in locals() else limpar_documento(login),
-                        "documentoSolicitante": login_limpo if 'login_limpo' in locals() else limpar_documento(login),
-                        "documentoCliente": login_limpo if 'login_limpo' in locals() else limpar_documento(login),
+                        "documento": limpar_documento(login),
+                        "documentoSolicitante": limpar_documento(login),
+                        "documentoCliente": limpar_documento(login),
                         "byPassActiv": "X",
                         "motivo": "2"
                     }
@@ -1075,7 +930,7 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
     tempo_total_fim = time.perf_counter()
     tempo_total = tempo_total_fim - tempo_total_inicio
 
-    # === RELATÓRIO FINAL ===
+    # Relatório final
     ucs_sucesso_set = set(ucs_sucesso)
     ucs_retidas_set = set(ucs_retidas) - ucs_sucesso_set
     ucs_fatura_indisponivel_set = set(ucs_fatura_indisponivel) - ucs_sucesso_set
@@ -1116,18 +971,16 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
     
     return resultados
 
-# ==================== FUNÇÃO PRINCIPAL ====================
+# ----------------------------
+# Função principal
+# ----------------------------
 def main():
     st.sidebar.header("⚙️ Configurações do Scraper")
     
     # Configurações do usuário
-    headless = st.sidebar.checkbox("Modo Headless (sem interface gráfica)", value=False)
-    
-    # Removido o campo de diretório - usando diretório fixo "Neoenergia"
+    headless = st.sidebar.checkbox("Modo Headless (sem interface gráfica)", value=True)
     meses_desejados = st.sidebar.text_input("Meses desejados (separados por vírgula)", "2025/10")
     mes_atraso = st.sidebar.text_input("Mês limite para UC inativa", "2025/06")
-    
-    meses_lista = [mes.strip() for mes in meses_desejados.split(",")]
     
     # Adicionar seção de downloads na sidebar
     st.sidebar.header("📥 Downloads")
@@ -1174,7 +1027,7 @@ def main():
         
         # Aplicar filtro de cliente
         if cliente_selecionado == "Todos os Clientes":
-            clientes_selecionados = clientes_unicos[1:]  # Remove "Todos os Clientes" da lista
+            clientes_selecionados = clientes_unicos[1:]
         else:
             clientes_selecionados = [cliente_selecionado]
         
@@ -1186,12 +1039,11 @@ def main():
             estimativa_fim = st.number_input("Fim do intervalo da Estimativa:", 
                                             value=int(df['Estimativa'].max()))
 
-        # Filtro por código UC para reset do dataframe - CORRIGIDO
+        # Filtro por código UC
         st.sidebar.subheader("🔄 Reset por Código UC")
         codigo_uc_inicio = st.sidebar.text_input(
             "Código UC para iniciar busca:",
-            placeholder="Digite o código UC para começar a partir dele",
-            help="A busca começará a partir desta UC. Deixe vazio para começar do início."
+            placeholder="Digite o código UC para começar a partir dele"
         )
 
         # Aplicar filtros iniciais
@@ -1205,37 +1057,25 @@ def main():
             ['distribuidora_id','codigo', 'login', 'senha_dist']
         ].copy()
 
-        # DEBUG: Mostrar informações sobre o dataframe filtrado
         st.sidebar.info(f"📊 UCs após filtros básicos: {len(df_filtrado)}")
 
-        # Aplicar filtro por código UC se especificado - CORREÇÃO FINAL
+        # Aplicar filtro por código UC se especificado
         if codigo_uc_inicio and codigo_uc_inicio.strip():
             codigo_uc_inicio = codigo_uc_inicio.strip()
             try:
-                # CORREÇÃO: Resetar o índice do dataframe filtrado primeiro
                 df_filtrado_reset = df_filtrado.reset_index(drop=True)
-                
-                # Encontrar todas as ocorrências da UC
                 indices = df_filtrado_reset.index[df_filtrado_reset['codigo'] == codigo_uc_inicio].tolist()
                 
                 if indices:
                     start_index = indices[0]
-                    st.sidebar.write(f"✅ UC encontrada na posição: {start_index + 1} de {len(df_filtrado_reset)}")
-                    
-                    # Filtrar a partir dessa posição
                     df_filtrado = df_filtrado_reset.iloc[start_index:].copy()
-                    
                     st.sidebar.success(f"✅ Busca iniciará a partir da UC: {codigo_uc_inicio}")
-                    st.sidebar.info(f"📊 Restam {len(df_filtrado)} UCs para processar")
-                else:
-                    st.sidebar.warning(f"⚠️ UC {codigo_uc_inicio} não encontrada no dataframe filtrado.")
             except Exception as e:
                 st.sidebar.error(f"❌ Erro ao processar código UC: {e}")
 
-        # Preencher senhas vazias
+        # Preencher senhas vazias e ordenar
         df_filtrado["senha_dist"] = df_filtrado["senha_dist"].fillna("")
 
-        # Ordenação por frequência de login
         if len(df_filtrado) > 0:
             frequencia_login = df_filtrado['login'].value_counts()
             df_filtrado = df_filtrado.copy()
@@ -1247,37 +1087,15 @@ def main():
         df_filtrado.columns = ['dist','codigo','login','senha_dist']
 
         st.subheader("📊 Dados Filtrados para Processamento")
-        st.info(f"🔄 Ordenado por login mais frequente - UCs do mesmo usuário ficam agrupadas")
-        
-        # Mostrar informações sobre o reset
-        if codigo_uc_inicio and codigo_uc_inicio.strip() and len(df_filtrado) > 0:
-            if codigo_uc_inicio in df_filtrado['codigo'].values:
-                st.warning(f"🔄 Processamento iniciará a partir da UC: **{codigo_uc_inicio}**")
         
         if len(df_filtrado) > 0:
             st.dataframe(df_filtrado, use_container_width=True)
             st.success(f"✅ Total de registros para processar: {len(df_filtrado)}")
         else:
-            st.error("❌ Nenhum registro encontrado para processar após aplicar os filtros.")
-            st.info("💡 Verifique os filtros aplicados e tente novamente.")
+            st.error("❌ Nenhum registro encontrado para processar.")
             return
 
-        if len(df_filtrado) > 0:
-            st.subheader("📈 Estatísticas de Agrupamento")
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                total_logins = df_filtrado['login'].nunique()
-                st.metric("Total de Logins Únicos", total_logins)
-            with col2:
-                media_ucs_por_login = len(df_filtrado) / total_logins if total_logins > 0 else 0
-                st.metric("Média de UCs por Login", f"{media_ucs_por_login:.1f}")
-            with col3:
-                if total_logins > 0:
-                    login_mais_frequente = df_filtrado['login'].value_counts().index[0]
-                    qtd_mais_frequente = df_filtrado['login'].value_counts().iloc[0]
-                    st.metric(f"Login Mais Frequente ({login_mais_frequente})", f"{qtd_mais_frequente} UCs")
-
-        # Botões de controle de execução
+        # Botões de controle
         col1, col2 = st.columns(2)
         
         with col1:
@@ -1294,70 +1112,24 @@ def main():
                 status_text = st.empty()
                 
                 with st.spinner("🔄 Executando extração de faturas..."):
-                    resultados = executar_scraper(df_filtrado, progress_bar, status_text, meses_lista, mes_atraso, headless)
+                    resultados = executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, mes_atraso, headless)
                 
                 if resultados:
                     progress_bar.progress(1.0)
                     status_text.text("✅ Extração concluída!")
                     st.session_state.executando = False
-                    
-                    st.subheader("📄 Relatório Detalhado da Execução")
-                    
-                    with st.expander(f"✅ UCs com Sucesso ({len(resultados['ucs_sucesso'])})"):
-                        st.json(resultados['ucs_sucesso'])
-                    
-                    with st.expander(f"📦 UCs Retidas ({len(resultados['ucs_retidas'])})"):
-                        st.json(resultados['ucs_retidas'])
-
-                    with st.expander(f"🚫 Faturas Indisponíveis ({len(resultados['ucs_fatura_indisponivel'])})"):
-                        st.json(resultados['ucs_fatura_indisponivel'])
-                    
-                    with st.expander(f"🔴 Erros de Sistema ({len(resultados['ucs_erro_sistema'])})"):
-                        st.json(resultados['ucs_erro_sistema'])
-
-                    with st.expander(f"❌ Erros de Busca ({len(resultados['ucs_erro_busca'])})"):
-                        st.json(resultados['ucs_erro_busca'])
-                        
-                    with st.expander(f"📭 UCs Sem Fatura ({len(resultados['ucs_sem_fatura'])})"):
-                        st.json(resultados['ucs_sem_fatura'])
-                    
-                    with st.expander(f"⛔ UCs Inativas ({len(resultados['ucs_inativas'])})"):
-                        st.json(resultados['ucs_inativas'])
-                    
-                    with st.expander(f"🔐 UCs para Ativar Cadastro ({len(resultados['ucs_ativar_cadastro'])})"):
-                        st.json(resultados['ucs_ativar_cadastro'])
-                    
-                    with st.expander(f"🔑 UCs com Credenciais Inválidas ({len(resultados['ucs_cadastro_invalido'])})"):
-                        st.json(resultados['ucs_cadastro_invalido'])
 
         with col2:
             if st.button("⏹️ Parar Execução", type="secondary", use_container_width=True):
                 parar_execucao()
-                st.warning("⏹️ Comando para parar execução enviado. Aguardando conclusão do processo atual...")
-
-        # Mostrar status atual da execução
-        if st.session_state.executando:
-            st.info("🔄 Execução em andamento...")
-        elif st.session_state.parar_execucao:
-            st.warning("⏹️ Execução interrompida pelo usuário")
+                st.warning("⏹️ Comando para parar execução enviado.")
 
         # Exibir seção de downloads
         exibir_secao_downloads()
 
     except Exception as e:
         st.error(f"❌ Erro ao carregar dados: {e}")
-        st.exception(e)
 
+# 🚀 INICIAR APLICAÇÃO
 if __name__ == "__main__":
     main()
-
-
-
-
-
-
-
-
-
-
-
