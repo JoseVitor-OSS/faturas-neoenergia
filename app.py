@@ -19,6 +19,7 @@ from selenium.webdriver.chrome.options import Options
 from urllib.parse import urlencode
 import zipfile
 import io
+from google.oauth2.service_account import Credentials
 
 # ----------------------------
 # Configurações iniciais
@@ -1284,6 +1285,7 @@ def main():
     except Exception as e:
         st.error(f"❌ Erro ao carregar dados: {e}")
         st.exception(e)
+
 
 
 
