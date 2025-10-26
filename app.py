@@ -21,6 +21,9 @@ import zipfile
 import io
 import os
 import sys
+import subprocess
+
+
 # SEMPRE redirecionar para streamlit run quando executado como python app.py
 if __name__ == "__main__" and len(sys.argv) == 1:
     print("🚀 REDIRECIONANDO PARA STREAMLIT RUN...")
@@ -1328,6 +1331,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
