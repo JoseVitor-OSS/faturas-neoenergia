@@ -19,6 +19,12 @@ from urllib.parse import urlencode
 import zipfile
 import io
 
+# 🚨 SOLUÇÃO DE EMERGÊNCIA - Forçar Streamlit
+if __name__ == "__main__" and not any("streamlit" in arg for arg in sys.argv):
+    print("🔧 FORÇANDO STREAMLIT RUN...")
+    os.execvp("streamlit", ["streamlit", "run", __file__, "--server.port=8000", "--server.address=0.0.0.0"])
+
+print("✅ STREAMLIT INICIADO CORRETAMENTE!")
 # === CONFIGURAÇÃO DE RETRY === 
 MAX_RETRIES = 3
 RETRY_DELAY = 5  # segundos
@@ -1133,3 +1139,4 @@ def main():
 # 🚀 INICIAR APLICAÇÃO
 if __name__ == "__main__":
     main()
+
