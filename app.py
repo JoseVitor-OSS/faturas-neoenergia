@@ -965,31 +965,40 @@ def main():
         st.error(f"❌ Erro ao carregar dados: {e}")
 
 # 🚀 INICIAR APLICAÇÃO - CONFIGURAÇÃO PARA RAILWAY
-# 🚀 INICIAR APLICAÇÃO
-# 🚀 SOLUÇÃO DEFINITIVA - VERIFICAÇÃO DUPLA
+# 🎯 SOLUÇÃO ROBUSTA - VERIFICAÇÃO COMPLETA
 if __name__ == "__main__":
     import sys
     import os
     
-    # Verificar SE já está rodando no Streamlit
-    is_streamlit = any("streamlit" in arg.lower() for arg in sys.argv)
+    def is_running_in_streamlit():
+        """Verificação COMPLETA se está rodando no Streamlit"""
+        # 1. Verificar argumentos da linha de comando
+        if any("streamlit" in arg.lower() for arg in sys.argv):
+            return True
+        
+        # 2. Verificar variáveis de ambiente do Streamlit
+        streamlit_env_vars = ['STREAMLIT_SCRIPT', 'STREAMLIT_SERVER_PORT', 'STREAMLIT_SERVER_ADDRESS']
+        if any(var in os.environ for var in streamlit_env_vars):
+            return True
+        
+        # 3. Verificar se é executado como módulo
+        if 'streamlit.web.cli' in sys.modules:
+            return True
+            
+        return False
     
-    if not is_streamlit:
-        # 🔧 PROBLEMA 1: Não está no Streamlit - redirecionar UMA VEZ
-        print("🚀 INICIANDO STREAMLIT...")
+    if not is_running_in_streamlit():
+        # 🔧 Redirecionar para Streamlit APENAS UMA VEZ
+        print("🎯 CONFIGURANDO STREAMLIT...")
         port = os.environ.get("PORT", "8000")
         
-        # Configurar UMA VEZ
-        os.environ["STREAMLIT_SERVER_PORT"] = port
-        os.environ["STREAMLIT_SERVER_ADDRESS"] = "0.0.0.0"
-        
-        # Importar e executar UMA VEZ
-        from streamlit.web import cli as stcli
-        sys.argv = ["streamlit", "run", __file__]
-        stcli.main()
+        # Método que NÃO cria loop - substitui processo atual
+        os.execlp("streamlit", "streamlit", "run", __file__, 
+                 "--server.port", port, 
+                 "--server.address", "0.0.0.0")
     else:
-        # ✅ PROBLEMA 2: Já está no Streamlit - executar app normal
-        print("✅ STREAMLIT JÁ INICIADO - EXECUTANDO APP")
+        # ✅ Executar aplicação normalmente
         main()
+
 
 
