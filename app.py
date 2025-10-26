@@ -25,6 +25,7 @@ import subprocess
 
 
 # SEMPRE redirecionar para streamlit run quando executado como python app.py
+# SOLUÇÃO CORRIGIDA - Usar porta dinâmica
 if __name__ == "__main__" and len(sys.argv) == 1:
     print("🚀 REDIRECIONANDO PARA STREAMLIT RUN...")
     port = os.environ.get('PORT', '8000')
@@ -35,11 +36,12 @@ if __name__ == "__main__" and len(sys.argv) == 1:
         __file__, 
         "--server.port", port, 
         "--server.address", "0.0.0.0",
-        "--server.headless", "true"
+        "--server.headless", "true",
+        "--server.enableCORS", "false",
+        "--server.enableXsrfProtection", "false"
     ])
     sys.exit(result.returncode)
 
-# Se chegou aqui, está sendo executado pelo streamlit
 print("✅ EXECUTANDO VIA STREAMLIT - TUDO CERTO!")
     
 # ----------------------------
@@ -1331,6 +1333,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
