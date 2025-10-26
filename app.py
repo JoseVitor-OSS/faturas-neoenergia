@@ -1040,14 +1040,13 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
 def main():
     st.title("🏭 Sistema de Faturas Neoenergia")
     
-    # Sidebar
-    st.sidebar.header("⚙️ Configurações")
-    
+    st.sidebar.header("ℹ️ Sobre")
     st.sidebar.info("""
-    **Instruções:**
-    1. Configure as credenciais do Google Sheets nos Secrets
-    2. O sistema carregará os dados automaticamente
-    3. Use os filtros para selecionar UCs específicas
+    **Sistema de Gestão de Faturas**
+    
+    - Carrega dados do Google Sheets
+    - Visualiza UCs cadastradas
+    - Exporta dados para CSV
     """)
     
     try:
@@ -1058,13 +1057,14 @@ def main():
                 st.error("""
                 ❌ Não foi possível conectar ao Google Sheets.
                 
-                **Solução:**
-                - Configure as credenciais do Service Account nos Secrets do Streamlit
-                - Verifique se a chave da planilha está correta
+                **Para configurar:**
+                1. Crie uma Service Account no Google Cloud
+                2. Adicione as credenciais nos Secrets do Streamlit
+                3. Compartilhe a planilha com o email da Service Account
                 """)
                 return
             
-            # Carregar dados da planilha
+            # Carregar dados
             sheet_key = st.secrets.get("GOOGLE_SHEET_KEY", "1gI3h3F1ALScglYfr7NIfAxYyV0NSVjEJvoKFarlywBY")
             spreadsheet = gc.open_by_key(sheet_key)
             sheet = spreadsheet.worksheet("bd_ucs")
@@ -1075,86 +1075,79 @@ def main():
                 st.warning("📭 Nenhum dado encontrado na planilha")
                 return
             
-            # Criar DataFrame
-            df = pd.DataFrame(dados[1:], columns=dados[0])
+            # Extrair cabeçalho e dados
+            cabecalho = dados[0]
+            linhas = dados[1:]
             
-            # Limpar e preparar dados
-            if 'Estimativa' in df.columns:
-                df['Estimativa'] = pd.to_numeric(df['Estimativa'], errors='coerce').fillna(0).astype(int)
-            
-            st.success(f"✅ Dados carregados com sucesso! Total: {len(df)} registros")
-        
-        # ==================== FILTROS ====================
-        st.subheader("🔍 Filtros de Seleção")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Filtro por Distribuidora
-            distribuidoras = ['COELBA', 'COSERN', 'NEOENERGIA PE', 'ELEKTRO']
-            distribuidora_selecionada = st.selectbox(
-                "Distribuidora:",
-                options=["Todas"] + distribuidoras,
-                index=0
-            )
-        
-        with col2:
-            # Filtro por Status
-            if 'Status' in df.columns:
-                status_options = df['Status'].unique().tolist()
-                status_selecionado = st.selectbox(
-                    "Status:",
-                    options=["Todos"] + status_options,
-                    index=0
-                )
-        
-        # Aplicar filtros
-        df_filtrado = df.copy()
-        
-        if distribuidora_selecionada != "Todas":
-            df_filtrado = df_filtrado[df_filtrado['Distribuidora'] == distribuidora_selecionada]
-        
-        if 'Status' in df.columns and status_selecionado != "Todos":
-            df_filtrado = df_filtrado[df_filtrado['Status'] == status_selecionado]
+            st.success(f"✅ {len(linhas)} registros carregados com sucesso!")
         
         # ==================== VISUALIZAÇÃO ====================
-        st.subheader("📊 Dados Filtrados")
+        st.subheader("📊 Dados das UCs")
         
-        if len(df_filtrado) > 0:
-            st.dataframe(df_filtrado, use_container_width=True)
+        # Mostrar estatísticas
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Total UCs", len(linhas))
+        
+        with col2:
+            # Contar distribuidoras únicas
+            if 'Distribuidora' in cabecalho:
+                idx_dist = cabecalho.index('Distribuidora')
+                distribuidoras = set(linha[idx_dist] for linha in linhas if len(linha) > idx_dist)
+                st.metric("Distribuidoras", len(distribuidoras))
+            else:
+                st.metric("Colunas", len(cabecalho))
+        
+        with col3:
+            if 'Status' in cabecalho:
+                idx_status = cabecalho.index('Status')
+                status = set(linha[idx_status] for linha in linhas if len(linha) > idx_status)
+                st.metric("Status", len(status))
+            else:
+                st.metric("Registros", len(linhas))
+        
+        # Mostrar tabela simples
+        st.subheader("📋 Visualização dos Dados")
+        
+        # Mostrar primeiras 10 linhas em formato de tabela do Streamlit
+        if len(linhas) > 0:
+            # Preparar dados para exibição (apenas primeiras 10 linhas)
+            dados_exibicao = []
+            for i, linha in enumerate(linhas[:10]):
+                linha_dict = {}
+                for j, valor in enumerate(linha[:6]):  # Apenas primeiras 6 colunas
+                    if j < len(cabecalho):
+                        linha_dict[cabecalho[j]] = valor
+                dados_exibicao.append(linha_dict)
             
-            # Estatísticas
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                st.metric("Total UCs", len(df_filtrado))
-            with col2:
-                st.metric("Distribuidoras", df_filtrado['Distribuidora'].nunique())
-            with col3:
-                if 'Clientes' in df_filtrado.columns:
-                    st.metric("Clientes", df_filtrado['Clientes'].nunique())
-                else:
-                    st.metric("Registros", len(df_filtrado))
-            with col4:
-                if 'Status' in df_filtrado.columns:
-                    st.metric("Status Únicos", df_filtrado['Status'].nunique())
-            
-            # Download dos dados
-            csv = df_filtrado.to_csv(index=False)
-            st.download_button(
-                label="📥 Baixar CSV",
-                data=csv,
-                file_name=f"ucs_filtradas_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                mime="text/csv"
-            )
-            
-        else:
-            st.warning("⚠️ Nenhum registro encontrado com os filtros aplicados")
+            # Exibir tabela usando st.dataframe nativo
+            if dados_exibicao:
+                st.dataframe(dados_exibicao, use_container_width=True)
+        
+        if len(linhas) > 10:
+            st.info(f"📄 Mostrando 10 de {len(linhas)} registros")
+        
+        # Download como CSV
+        st.subheader("📥 Exportar Dados")
+        
+        # Criar CSV manualmente
+        csv_content = ",".join(f'"{col}"' for col in cabecalho) + "\n"
+        for linha in linhas:
+            csv_content += ",".join(f'"{valor}"' for valor in linha) + "\n"
+        
+        st.download_button(
+            label="📥 Baixar CSV Completo",
+            data=csv_content,
+            file_name=f"ucs_completo_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
             
     except Exception as e:
-        st.error(f"❌ Erro ao carregar dados: {str(e)}")
+        st.error(f"❌ Erro: {str(e)}")
         st.info("💡 Verifique se as credenciais do Google Sheets estão configuradas corretamente")
 
-# ==================== EXECUÇÃO ====================
 if __name__ == "__main__":
     main()
+
