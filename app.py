@@ -18,14 +18,8 @@ from selenium.webdriver.chrome.service import Service
 from urllib.parse import urlencode
 import zipfile
 import io
-import sys 
+import sys
 
-# 🚨 SOLUÇÃO DE EMERGÊNCIA - Forçar Streamlit
-if __name__ == "__main__" and not any("streamlit" in arg for arg in sys.argv):
-    print("🔧 FORÇANDO STREAMLIT RUN...")
-    os.execvp("streamlit", ["streamlit", "run", __file__, "--server.port=8000", "--server.address=0.0.0.0"])
-
-print("✅ STREAMLIT INICIADO CORRETAMENTE!")
 # === CONFIGURAÇÃO DE RETRY === 
 MAX_RETRIES = 3
 RETRY_DELAY = 5  # segundos
@@ -294,6 +288,7 @@ def autorizar_google():
                        "https://www.googleapis.com/auth/drive"]
             )
             gc = gspread.authorize(creds)
+            st.success("✅ Conectado ao Google Sheets via Service Account")
             return gc
         else:
             st.error("🔐 Credenciais não encontradas nos Secrets")
@@ -408,7 +403,7 @@ def parar_execucao():
     st.session_state.executando = False
 
 # ----------------------------
-# Função principal do scraper
+# Função principal do scraper (SIMPLIFICADA)
 # ----------------------------
 def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, mes_atraso, headless=False):
     diretorio_download = "Neoenergia"
@@ -485,13 +480,6 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
                         login_btn_found = True
                         break
                 
-                if not login_btn_found:
-                    for elem in navegador.find_elements(By.XPATH, "//button | //a | //input[@type='button']"):
-                         if 'LOGIN' in elem.get_attribute('innerHTML').upper() or 'LOGIN' in elem.get_attribute('value', '').upper(): 
-                             navegador.execute_script("arguments[0].click();", elem)
-                             login_btn_found = True
-                             break
-                
                 time.sleep(2)
                 
                 # Preencher campos de login
@@ -521,48 +509,7 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
                         entrar_btn_found = True
                         break
                 
-                if not entrar_btn_found:
-                    for elem in navegador.find_elements(By.XPATH, "//button | //input[@type='submit']"):
-                        if 'ENTRAR' in elem.get_attribute('innerHTML').upper() or 'ENTRAR' in elem.get_attribute('value', '').upper(): 
-                            navegador.execute_script("arguments[0].click();", elem)
-                            entrar_btn_found = True
-                            break
-                
                 time.sleep(10)
-                
-                # Verificar se precisa trocar senha
-                try:
-                    aviso = WebDriverWait(navegador, 3).until(EC.presence_of_element_located((By.ID, 'swal2-html-container'))).text
-                    if 'troca da sua senha' in aviso.lower():
-                        for j in range(i, len(df_filtrado)):
-                            if df_filtrado['login'].iloc[j] == login: 
-                                ucs_ativar_cadastro.append(df_filtrado['codigo'].iloc[j].zfill(12))
-                            else: 
-                                break
-                        continue
-                except: 
-                    pass
-                
-                # Verificar credenciais inválidas
-                credenciais_invalidas = False
-                try:
-                    error_msgs = navegador.find_elements(By.CLASS_NAME, 'm-0')
-                    for msg in error_msgs:
-                        if 'CPF/CNPJ ou senha inválidos' in msg.text:
-                            credenciais_invalidas = True
-                            for j in range(i, len(df_filtrado)):
-                                if df_filtrado['login'].iloc[j] == login: 
-                                    ucs_cadastro_invalido.append(df_filtrado['codigo'].iloc[j].zfill(12))
-                                else: 
-                                    break
-                            break
-                except: 
-                    pass
-                
-                if credenciais_invalidas: 
-                    continue
-                
-                time.sleep(3)
 
             # Obter token
             token = None
@@ -589,7 +536,6 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
             headers = {
                 'Authorization': f'Bearer {token}', 
                 'Content-Type': 'application/json',
-                'Accept': 'application/json', 
                 'User-Agent': 'Mozilla/5.0'
             }
             time.sleep(1)
@@ -610,12 +556,10 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
                 }
 
                 try:
-                    time.sleep(1)
                     res_protocolo = fazer_requisicao_com_retry(url_protocolo, headers=headers, params=params_protocolo, method='GET')
                     
                     if not res_protocolo or res_protocolo.status_code != 200:
                         ucs_erro_sistema.append(uc_desejada)
-                        ucs_erro_busca.append(uc_desejada)
                         continue
                     
                     protocolo_data = res_protocolo.json()
@@ -642,12 +586,10 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
                 }
 
                 try:
-                    time.sleep(1)
                     res_faturas = fazer_requisicao_com_retry(url_faturas, headers=headers, params=params_faturas, method='GET')
                     
                     if not res_faturas or res_faturas.status_code != 200:
                         ucs_erro_sistema.append(uc_desejada)
-                        ucs_erro_busca.append(uc_desejada)
                         continue
                     
                     faturas_data = res_faturas.json()
@@ -680,12 +622,10 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
                 }
 
                 try:
-                    time.sleep(1)
                     res_ucs = fazer_requisicao_com_retry(url_ucs, headers=headers, params=params_ucs, method='GET')
                     
                     if not res_ucs or res_ucs.status_code != 200:
                         ucs_erro_sistema.append(uc_desejada)
-                        ucs_erro_busca.append(uc_desejada)
                         continue
                     
                     ucs_data = res_ucs.json()
@@ -711,12 +651,10 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
                 }
 
                 try:
-                    time.sleep(1)
                     res_protocolo = fazer_requisicao_com_retry(url_protocolo, headers=headers, params=params_protocolo, method='GET')
                     
                     if not res_protocolo or res_protocolo.status_code != 200:
                         ucs_erro_sistema.append(uc_info['uc'])
-                        ucs_erro_busca.append(uc_info['uc'])
                         continue
                     
                     protocolo_data = res_protocolo.json()
@@ -749,12 +687,10 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
                 }
 
                 try:
-                    time.sleep(1)
                     res_faturas = fazer_requisicao_com_retry(url_faturas, headers=headers, params=params_faturas, method='GET')
                     
                     if not res_faturas or res_faturas.status_code != 200:
                         ucs_erro_sistema.append(uc_info['uc'])
-                        ucs_erro_busca.append(uc_info['uc'])
                         continue
                     
                     faturas_data = res_faturas.json()
@@ -768,28 +704,6 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
             if not faturas:
                 ucs_sem_fatura.append(uc_info.get('uc', uc_desejada))
                 continue
-
-            try:
-                if id_distribuidora == 52:
-                    f_mais_recente = sorted(faturas, key=lambda f: f.get("dataCompetencia", ""), reverse=True)[0]
-                    if f_mais_recente.get("dataCompetencia", "")[:7].replace('-', '/') <= mes_atraso.replace('/', '-'):
-                        ucs_inativas.append(uc_info['uc'])
-                else:
-                    f_mais_recente = sorted(faturas, key=lambda f: f.get("mesReferencia", ""), reverse=True)[0]
-                    if f_mais_recente.get("mesReferencia") <= mes_atraso:
-                        ucs_inativas.append(uc_info['uc'])
-            except IndexError:
-                ucs_sem_fatura.append(uc_info.get('uc', uc_desejada))
-                continue
-
-            st.write(f"🔍 Busca {i+1} de {len(df_filtrado)}")
-            st.write(f"✅ Protocolo: {protocolo}")
-            st.write(f"✅ {len(faturas)} faturas encontradas")
-            
-            if id_distribuidora == 52:
-                st.write(f"🧾 Mais recente: {f_mais_recente.get('dataCompetencia')}")
-            else:
-                st.write(f"🧾 Mais recente: {f_mais_recente.get('mesReferencia')}")
 
             # Baixar faturas dos meses desejados
             faturas_baixadas_neste_mes = 0
@@ -805,15 +719,10 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
                     fatura_desejada = next((f for f in faturas if f.get('mesReferencia') == mes_desejada), None)
                 
                 if not fatura_desejada:
-                    st.write(f"⚠️ Fatura do mês {mes_desejada} não encontrada.")
-                    if uc_info.get('uc', uc_desejada) not in ucs_retidas:
-                        ucs_retidas.append(uc_info.get('uc', uc_desejada))
                     continue
 
                 numero_fatura = fatura_desejada.get('numeroFatura')
                 if not numero_fatura:
-                    if uc_info.get('uc', uc_desejada) not in ucs_retidas:
-                        ucs_retidas.append(uc_info.get('uc', uc_desejada))
                     continue
 
                 # Download do PDF
@@ -842,15 +751,9 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
                         "regiao": regiao,
                         "tipoPerfil": "1",
                         "documento": limpar_documento(login),
-                        "documentoSolicitante": limpar_documento(login),
-                        "documentoCliente": limpar_documento(login),
-                        "byPassActiv": "X",
-                        "motivo": "2"
                     }
 
                 try:
-                    time.sleep(1)
-                    
                     res_pdf = fazer_requisicao_com_retry(
                         url_pdf, 
                         headers=headers, 
@@ -859,23 +762,7 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
                         skip_retry_errors=ERRORS_SEM_RETRY
                     )
                     
-                    if not res_pdf:
-                        if uc_info.get('uc', uc_desejada) not in ucs_erro_sistema:
-                            ucs_erro_sistema.append(uc_info.get('uc', uc_desejada))
-                        if uc_info.get('uc', uc_desejada) not in ucs_erro_busca:
-                            ucs_erro_busca.append(uc_info.get('uc', uc_desejada))
-                        continue
-                    
-                    if res_pdf.status_code != 200:
-                        if "Fatura indisponível no canal digital" in res_pdf.text:
-                            if uc_info.get('uc', uc_desejada) not in ucs_fatura_indisponivel:
-                                ucs_fatura_indisponivel.append(uc_info.get('uc', uc_desejada))
-                        elif "falha ao checar relação 'documento' - 'uc'" in res_pdf.text:
-                            if uc_info.get('uc', uc_desejada) not in ucs_cadastro_invalido:
-                                ucs_cadastro_invalido.append(uc_info.get('uc', uc_desejada))
-                        else:
-                            if uc_info.get('uc', uc_desejada) not in ucs_retidas:
-                                ucs_retidas.append(uc_info.get('uc', uc_desejada))
+                    if not res_pdf or res_pdf.status_code != 200:
                         continue
 
                     # Processar resposta do PDF
@@ -889,7 +776,13 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
                     nome_arquivo = f"{nome_distribuidora}_{codigo_uc}_{mes_ref}.pdf"
                     caminho_completo = os.path.join(dir_base, nome_arquivo)
 
-                    if 'application/json' in content_type:
+                    if 'application/pdf' in content_type:
+                        with open(caminho_completo, "wb") as f:
+                            f.write(res_pdf.content)
+                        faturas_baixadas_neste_mes += 1
+                        st.success(f"✅ PDF baixado: {nome_arquivo}")
+                    
+                    elif 'application/json' in content_type:
                         data_json = res_pdf.json()
                         base64_pdf = data_json.get("fileData") or data_json.get("faturaBase64")
                         if base64_pdf:
@@ -897,23 +790,9 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
                                 f.write(base64.b64decode(base64_pdf))
                             faturas_baixadas_neste_mes += 1
                             st.success(f"✅ PDF baixado: {nome_arquivo}")
-                        else:
-                            if uc_info.get('uc', uc_desejada) not in ucs_retidas:
-                                ucs_retidas.append(uc_info.get('uc', uc_desejada))
-                    
-                    elif 'application/pdf' in content_type:
-                        with open(caminho_completo, "wb") as f:
-                            f.write(res_pdf.content)
-                        faturas_baixadas_neste_mes += 1
-                        st.success(f"✅ PDF baixado: {nome_arquivo}")
-                    
-                    else:
-                        if uc_info.get('uc', uc_desejada) not in ucs_retidas:
-                            ucs_retidas.append(uc_info.get('uc', uc_desejada))
                             
                 except Exception as e:
-                    if uc_info.get('uc', uc_desejada) not in ucs_retidas:
-                        ucs_retidas.append(uc_info.get('uc', uc_desejada))
+                    pass
 
             # Contabilizar sucesso
             if faturas_baixadas_neste_mes > 0:
@@ -924,7 +803,6 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
             fim_uc = time.perf_counter()
             tempo_uc = fim_uc - inicio_uc
             tempos_ucs.append((df_filtrado['codigo'].iloc[i], round(tempo_uc, 2)))
-            st.write(f"⏱️ Tempo desta UC: {tempo_uc:.2f} segundos")
 
         except Exception as e:
             if df_filtrado['codigo'].iloc[i] not in ucs_retidas:
@@ -938,42 +816,17 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
     tempo_total = tempo_total_fim - tempo_total_inicio
 
     # Relatório final
-    ucs_sucesso_set = set(ucs_sucesso)
-    ucs_retidas_set = set(ucs_retidas) - ucs_sucesso_set
-    ucs_fatura_indisponivel_set = set(ucs_fatura_indisponivel) - ucs_sucesso_set
-    ucs_erro_sistema_set = set(ucs_erro_sistema) - ucs_sucesso_set
-    ucs_erro_busca_set = set(ucs_erro_busca) - ucs_sucesso_set
-    ucs_sem_fatura_set = set(ucs_sem_fatura) - ucs_sucesso_set
-    ucs_inativas_set = set(ucs_inativas) - ucs_sucesso_set
-    ucs_ativar_cadastro_set = set(ucs_ativar_cadastro) - ucs_sucesso_set
-    ucs_cadastro_invalido_set = set(ucs_cadastro_invalido) - ucs_sucesso_set
-    
     st.write("\n🧾 === RELATÓRIO FINAL ===")
     st.write(f"📊 Total UCs: {len(df_filtrado)}")
-    st.write(f"✅ Sucesso: {len(ucs_sucesso_set)}")
-    st.write(f"📦 Retidas: {len(ucs_retidas_set)}")
-    st.write(f"🚫 Indisponíveis: {len(ucs_fatura_indisponivel_set)}")
-    st.write(f"🔴 Erros Sistema: {len(ucs_erro_sistema_set)}")
-    st.write(f"❌ Erros Busca: {len(ucs_erro_busca_set)}")
-    st.write(f"📭 Sem Fatura: {len(ucs_sem_fatura_set)}")
-    st.write(f"⛔ Inativas: {len(ucs_inativas_set)}")
-    st.write(f"🔐 Ativar Cadastro: {len(ucs_ativar_cadastro_set)}")
-    st.write(f"🔑 Cred. Inválidas: {len(ucs_cadastro_invalido_set)}")
-    st.write(f"\n⏲️ Tempo Total: {tempo_total:.2f} seg")
+    st.write(f"✅ Sucesso: {len(ucs_sucesso)}")
+    st.write(f"📦 Retidas: {len(ucs_retidas)}")
+    st.write(f"⏲️ Tempo Total: {tempo_total:.2f} seg")
     
     resultados = {
         'ucs_processadas': len(df_filtrado),
-        'ucs_sucesso': list(ucs_sucesso_set),
-        'ucs_retidas': list(ucs_retidas_set),
-        'ucs_fatura_indisponivel': list(ucs_fatura_indisponivel_set),
-        'ucs_erro_sistema': list(ucs_erro_sistema_set),
-        'ucs_erro_busca': list(ucs_erro_busca_set),
-        'ucs_sem_fatura': list(ucs_sem_fatura_set),
-        'ucs_inativas': list(ucs_inativas_set),
-        'ucs_ativar_cadastro': list(ucs_ativar_cadastro_set),
-        'ucs_cadastro_invalido': list(ucs_cadastro_invalido_set),
-        'tempo_total': tempo_total,
-        'tempos_ucs': tempos_ucs
+        'ucs_sucesso': ucs_sucesso,
+        'ucs_retidas': ucs_retidas,
+        'tempo_total': tempo_total
     }
     
     return resultados
@@ -985,9 +838,8 @@ def main():
     st.sidebar.header("⚙️ Configurações do Scraper")
     
     # Configurações do usuário
-    headless = st.sidebar.checkbox("Modo Headless (sem interface gráfica)", value=True)
-    meses_desejados = st.sidebar.text_input("Meses desejados (separados por vírgula)", "2025/10")
-    mes_atraso = st.sidebar.text_input("Mês limite para UC inativa", "2025/06")
+    headless = st.sidebar.checkbox("Modo Headless", value=True)
+    meses_desejados = st.sidebar.text_input("Meses desejados", "2025/10")
     
     # Adicionar seção de downloads na sidebar
     st.sidebar.header("📥 Downloads")
@@ -1011,74 +863,49 @@ def main():
         dados = sheet.get_all_values()
         df = pd.DataFrame(dados[1:], columns=dados[0])
 
-        df.columns = ['uc_id', 'cliente_id_gestor', 'distribuidora_id', 'codigo', 'login',
-                        'senha_dist', 'Status', 'documento', 'Distribuidora',
-                        'Status_Mes_Anterior', 'data_geracao', 'nome', 'Geradora?',
-                        'Clientes', 'Estimativa', 'Status2', 'Historico_Faturas',
-                        'StatusContrato', 'Senha_modificada', 'Status_TEST']
+        # Corrigir nomes de colunas duplicados
+        cabecalho_original = dados[0]
+        cabecalho_corrigido = []
+        contadores = {}
 
-        df['Estimativa'] = pd.to_numeric(df['Estimativa'], errors='coerce').fillna(0).astype(int)
+        for nome in cabecalho_original:
+            nome_limpo = nome.strip()
+            if nome_limpo in contadores:
+                contadores[nome_limpo] += 1
+                cabecalho_corrigido.append(f"{nome_limpo}_{contadores[nome_limpo]}")
+            else:
+                contadores[nome_limpo] = 1
+                cabecalho_corrigido.append(nome_limpo)
+
+        df = pd.DataFrame(dados[1:], columns=cabecalho_corrigido)
 
         st.subheader("🔍 Filtros de Seleção")
         
         # Filtro por Clientes
-        clientes_unicos = df['Clientes'].unique().tolist()
-        clientes_unicos.insert(0, "Todos os Clientes")
+        clientes_unicos = ['Todos os Clientes'] + df['Clientes'].unique().tolist()
         
         cliente_selecionado = st.sidebar.selectbox(
             "Selecione o Cliente:",
             options=clientes_unicos,
-            index=0,
-            help="Selecione um cliente específico ou 'Todos os Clientes'"
+            index=0
         )
         
         # Aplicar filtro de cliente
         if cliente_selecionado == "Todos os Clientes":
-            clientes_selecionados = clientes_unicos[1:]
+            clientes_selecionados = df['Clientes'].unique().tolist()
         else:
             clientes_selecionados = [cliente_selecionado]
         
-        col1, col2 = st.columns(2)
-        with col1:
-            estimativa_inicio = st.number_input("Início do intervalo da Estimativa:", 
-                                                value=int(df['Estimativa'].min()))
-        with col2:
-            estimativa_fim = st.number_input("Fim do intervalo da Estimativa:", 
-                                            value=int(df['Estimativa'].max()))
-
-        # Filtro por código UC
-        st.sidebar.subheader("🔄 Reset por Código UC")
-        codigo_uc_inicio = st.sidebar.text_input(
-            "Código UC para iniciar busca:",
-            placeholder="Digite o código UC para começar a partir dele"
-        )
-
         # Aplicar filtros iniciais
         df_filtrado = df.loc[
             ((df['Distribuidora'].isin(['COELBA','COSERN','NEOENERGIA PE','ELEKTRO'])) &
              (df['Status'].isin(['Acesso Ok','Sem fatura do mês de referencia','Retida'])) &
              (df['Status_TEST'] == 'A baixar') &
-             (df['Estimativa'] >= estimativa_inicio) &
-             (df['Estimativa'] <= estimativa_fim) &
              (df['Clientes'].isin(clientes_selecionados))),
             ['distribuidora_id','codigo', 'login', 'senha_dist']
         ].copy()
 
-        st.sidebar.info(f"📊 UCs após filtros básicos: {len(df_filtrado)}")
-
-        # Aplicar filtro por código UC se especificado
-        if codigo_uc_inicio and codigo_uc_inicio.strip():
-            codigo_uc_inicio = codigo_uc_inicio.strip()
-            try:
-                df_filtrado_reset = df_filtrado.reset_index(drop=True)
-                indices = df_filtrado_reset.index[df_filtrado_reset['codigo'] == codigo_uc_inicio].tolist()
-                
-                if indices:
-                    start_index = indices[0]
-                    df_filtrado = df_filtrado_reset.iloc[start_index:].copy()
-                    st.sidebar.success(f"✅ Busca iniciará a partir da UC: {codigo_uc_inicio}")
-            except Exception as e:
-                st.sidebar.error(f"❌ Erro ao processar código UC: {e}")
+        st.sidebar.info(f"📊 UCs após filtros: {len(df_filtrado)}")
 
         # Preencher senhas vazias e ordenar
         df_filtrado["senha_dist"] = df_filtrado["senha_dist"].fillna("")
@@ -1119,7 +946,7 @@ def main():
                 status_text = st.empty()
                 
                 with st.spinner("🔄 Executando extração de faturas..."):
-                    resultados = executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, mes_atraso, headless)
+                    resultados = executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, "2025/06", headless)
                 
                 if resultados:
                     progress_bar.progress(1.0)
@@ -1137,12 +964,10 @@ def main():
     except Exception as e:
         st.error(f"❌ Erro ao carregar dados: {e}")
 
-# 🚀 INICIAR APLICAÇÃO
-# 🎯 SOLUÇÃO PARA RAILWAY - Usar porta do ambiente
+# 🚀 INICIAR APLICAÇÃO - CONFIGURAÇÃO PARA RAILWAY
 if __name__ == "__main__":
+    # Configuração para Railway
     port = os.environ.get("PORT", "8000")
-    
-    print(f"🚀 INICIANDO STREAMLIT NA PORTA {port}...")
     
     from streamlit.web import cli as stcli
     sys.argv = [
@@ -1150,9 +975,7 @@ if __name__ == "__main__":
         "--server.port", port,
         "--server.address", "0.0.0.0",
         "--server.headless", "true",
-        "--browser.serverAddress", "0.0.0.0"
+        "--browser.serverAddress", "0.0.0.0",
+        "--global.developmentMode", "false"
     ]
     stcli.main()
-
-
-
