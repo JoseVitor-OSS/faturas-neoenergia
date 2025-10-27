@@ -297,6 +297,32 @@ def autorizar_google():
         return None
 
 # ----------------------------
+# NOVA FUNÇÃO (com cache)
+# ----------------------------
+@st.cache_data(ttl=600)  # Cache de 10 minutos
+def carregar_dados_planilha(sheet_key, sheet_name):
+    """Carrega e armazena em cache os dados do Google Sheets."""
+    try:
+        gc = autorizar_google()
+        if not gc:
+            st.error("Falha na autenticação com Google.")
+            return pd.DataFrame()  # Retorna DF vazio em caso de falha
+
+        spreadsheet = gc.open_by_key(sheet_key)
+        sheet = spreadsheet.worksheet(sheet_name)
+        dados = sheet.get_all_values()
+        
+        if not dados:
+            st.warning("A planilha parece estar vazia.")
+            return pd.DataFrame()
+
+        df = pd.DataFrame(dados[1:], columns=dados[0])
+        return df
+    except Exception as e:
+        st.error(f"❌ Erro ao carregar dados do Google Sheets: {e}")
+        return pd.DataFrame()
+
+# ----------------------------
 # Configuração do Selenium
 # ----------------------------
 def iniciar_navegador(headless=True):
@@ -977,6 +1003,38 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
 def main():
     st.sidebar.header("⚙️ Configurações do Scraper")
     
+    # ... (Configurações do usuário) ...
+    
+    try:
+        sheet_key = "1gI3h3F1ALScglYfr7NIfAxYyV0NSVjEJvoKFarlywBY"
+        sheet_name = "bd_ucs"
+
+        # === MODIFICAÇÃO PRINCIPAL ===
+        # Use a função com cache em vez de carregar tudo aqui
+        with st.spinner("🔗 Conectando ao Google Sheets..."):
+            df = carregar_dados_planilha(sheet_key, sheet_name)
+
+        if df.empty:
+            st.error("Não foi possível carregar os dados da planilha. O app não pode continuar.")
+            return
+        # ==============================
+            
+        # ... (O resto do seu código de filtragem do DataFrame) ...
+        # (O código que define as colunas, filtros, etc. vem aqui)
+        # Ex:
+        df.columns = ['uc_id', 'cliente_id_gestor', 'distribuidora_id', 'codigo', 'login',
+                      'senha_dist', 'Status', 'documento', 'Distribuidora',
+                      'Status_Mes_Anterior', 'data_geracao', 'nome', 'Geradora?',
+                      'Clientes', 'Estimativa', 'Status2', 'Historico_Faturas',
+                      'StatusContrato', 'Senha_modificada', 'Status_TEST']
+        df['Estimativa'] = pd.to_numeric(df['Estimativa'], errors='coerce').fillna(0).astype(int)
+        
+        # ... (Restante da sua lógica de filtros e UI) ...
+
+    except Exception as e:
+        st.error(f"❌ Erro ao carregar dados: {e}")
+    st.sidebar.header("⚙️ Configurações do Scraper")
+    
     # Configurações do usuário
     headless = st.sidebar.checkbox("Modo Headless (sem interface gráfica)", value=True)
     meses_desejados = st.sidebar.text_input("Meses desejados (separados por vírgula)", "2025/10")
@@ -1133,3 +1191,4 @@ def main():
 # 🚀 INICIAR APLICAÇÃO
 if __name__ == "__main__":
     main()
+
