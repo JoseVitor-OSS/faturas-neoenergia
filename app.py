@@ -165,75 +165,45 @@ if 'executando' not in st.session_state:
 if 'parar_execucao' not in st.session_state:
     st.session_state.parar_execucao = False
 if 'arquivos_baixados' not in st.session_state:
-    st.session_state.arquivos_baixados = {}
+    st.session_state.arquivos_baixados = {} # Salvará os PDFs aqui
 
 # ----------------------------
 # Função para criar arquivo ZIP
 # ----------------------------
-def criar_zip_pdfs(diretorio_base):
-    """Cria um arquivo ZIP com todos os PDFs baixados"""
+def criar_zip_pdfs(arquivos_session):
+    """Cria um arquivo ZIP com todos os PDFs do session_state"""
     zip_buffer = io.BytesIO()
     
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-        for root, dirs, files in os.walk(diretorio_base):
-            for file in files:
-                if file.endswith('.pdf'):
-                    file_path = os.path.join(root, file)
-                    arcname = os.path.relpath(file_path, diretorio_base)
-                    zip_file.write(file_path, arcname)
+        for mes, pdfs in arquivos_session.items():
+            for nome_arquivo, pdf_bytes in pdfs.items():
+                # Criar caminho virtual no ZIP (ex: 2025-10/COELBA_123_2025-10.pdf)
+                arcname = os.path.join(mes, nome_arquivo)
+                zip_file.writestr(arcname, pdf_bytes)
     
     zip_buffer.seek(0)
     return zip_buffer
 
 # ----------------------------
-# Função para listar arquivos PDF baixados
-# ----------------------------
-def listar_pdfs_baixados(diretorio_base):
-    """Lista todos os PDFs baixados organizados por mês"""
-    pdfs_por_mes = {}
-    
-    if os.path.exists(diretorio_base):
-        for mes_dir in os.listdir(diretorio_base):
-            mes_path = os.path.join(diretorio_base, mes_dir)
-            if os.path.isdir(mes_path):
-                pdfs_mes = []
-                for file in os.listdir(mes_path):
-                    if file.endswith('.pdf'):
-                        file_path = os.path.join(mes_path, file)
-                        pdfs_mes.append({
-                            'nome': file,
-                            'caminho': file_path,
-                            'tamanho': os.path.getsize(file_path)
-                        })
-                if pdfs_mes:
-                    pdfs_por_mes[mes_dir] = pdfs_mes
-    
-    return pdfs_por_mes
-
-# ----------------------------
 # Função para exibir seção de downloads
 # ----------------------------
 def exibir_secao_downloads():
-    """Exibe a seção com os arquivos baixados para download"""
-    diretorio_base = "Neoenergia"
+    """Exibe a seção com os arquivos baixados do session_state"""
     
-    if not os.path.exists(diretorio_base):
-        st.info("📁 Nenhum arquivo baixado ainda.")
-        return
-    
-    pdfs_por_mes = listar_pdfs_baixados(diretorio_base)
+    # Lê diretamente do session_state
+    pdfs_por_mes = st.session_state.arquivos_baixados
     
     if not pdfs_por_mes:
-        st.info("📁 Nenhum arquivo PDF encontrado.")
+        st.info("📁 Nenhum arquivo baixado ainda.")
         return
     
     st.subheader("📥 Arquivos Baixados")
     
     total_arquivos = sum(len(pdfs) for pdfs in pdfs_por_mes.values())
     total_tamanho = sum(
-        pdf['tamanho'] 
+        len(pdf_bytes)
         for mes_pdfs in pdfs_por_mes.values() 
-        for pdf in mes_pdfs
+        for pdf_bytes in mes_pdfs.values()
     ) / (1024 * 1024)
     
     col1, col2, col3 = st.columns(3)
@@ -245,7 +215,7 @@ def exibir_secao_downloads():
         st.metric("Tamanho Total", f"{total_tamanho:.2f} MB")
     
     if total_arquivos > 0:
-        zip_buffer = criar_zip_pdfs(diretorio_base)
+        zip_buffer = criar_zip_pdfs(pdfs_por_mes)
         
         st.download_button(
             label="📦 Baixar Todos os Arquivos (ZIP)",
@@ -257,21 +227,20 @@ def exibir_secao_downloads():
     
     for mes, pdfs in pdfs_por_mes.items():
         with st.expander(f"📅 Mês: {mes} ({len(pdfs)} arquivos)"):
-            for pdf in pdfs:
+            for nome_arquivo, pdf_bytes in pdfs.items():
                 col1, col2, col3 = st.columns([3, 1, 1])
                 with col1:
-                    st.write(f"`{pdf['nome']}`")
+                    st.write(f"`{nome_arquivo}`")
                 with col2:
-                    st.write(f"{pdf['tamanho'] / 1024:.1f} KB")
+                    st.write(f"{len(pdf_bytes) / 1024:.1f} KB")
                 with col3:
-                    with open(pdf['caminho'], 'rb') as f:
-                        st.download_button(
-                            label="📄 Baixar",
-                            data=f,
-                            file_name=pdf['nome'],
-                            mime="application/pdf",
-                            key=f"btn_{pdf['nome']}"
-                        )
+                    st.download_button(
+                        label="📄 Baixar",
+                        data=pdf_bytes,
+                        file_name=nome_arquivo,
+                        mime="application/pdf",
+                        key=f"btn_{nome_arquivo}"
+                    )
 
 # ----------------------------
 # Função de autenticação Google Sheets
@@ -283,8 +252,8 @@ def autorizar_google():
             service_account_info = dict(st.secrets['gcp_service_account'])
             creds = Credentials.from_service_account_info(
                 service_account_info,
-                scopes=["https://www.googleapis.com/auth/spreadsheets", 
-                       "https://www.googleapis.com/auth/drive"]
+                scopes=["https.www.googleapis.com/auth/spreadsheets", 
+                        "https.www.googleapis.com/auth/drive"]
             )
             gc = gspread.authorize(creds)
             return gc
@@ -297,7 +266,7 @@ def autorizar_google():
         return None
 
 # ----------------------------
-# NOVA FUNÇÃO (com cache)
+# Função COM CACHE para carregar dados
 # ----------------------------
 @st.cache_data(ttl=600)  # Cache de 10 minutos
 def carregar_dados_planilha(sheet_key, sheet_name):
@@ -312,8 +281,8 @@ def carregar_dados_planilha(sheet_key, sheet_name):
         sheet = spreadsheet.worksheet(sheet_name)
         dados = sheet.get_all_values()
         
-        if not dados:
-            st.warning("A planilha parece estar vazia.")
+        if not dados or len(dados) < 1:
+            st.warning("A planilha parece estar vazia ou conter apenas cabeçalho.")
             return pd.DataFrame()
 
         df = pd.DataFrame(dados[1:], columns=dados[0])
@@ -338,21 +307,23 @@ def iniciar_navegador(headless=True):
     chrome_options.add_experimental_option('useAutomationExtension', False)
     
     try:
-        driver = webdriver.Chrome(options=chrome_options)
+        # No Streamlit Cloud, o chromedriver estará no PATH se vc usar o packages.txt
+        driver = webdriver.Chrome(options=chrome_options) 
         driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         return driver
     except Exception as e:
         st.error(f"Erro ao iniciar navegador: {e}")
+        st.error("Verifique se o 'google-chrome-stable' e 'chromedriver' estão no seu 'packages.txt'.")
         return None
 
 # ----------------------------
 # Função para fazer requisições com retry
 # ----------------------------
 def fazer_requisicao_com_retry(url, headers=None, params=None, method='GET', 
-                                 max_retries=MAX_RETRIES, 
-                                 initial_delay=RETRY_DELAY,
-                                 backoff_factor=RETRY_BACKOFF,
-                                 skip_retry_errors=None):
+                               max_retries=MAX_RETRIES, 
+                               initial_delay=RETRY_DELAY,
+                               backoff_factor=RETRY_BACKOFF,
+                               skip_retry_errors=None):
     if skip_retry_errors is None:
         skip_retry_errors = ERRORS_SEM_RETRY
     
@@ -430,7 +401,7 @@ def parar_execucao():
 # Função principal do scraper
 # ----------------------------
 def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, mes_atraso, headless=False):
-    diretorio_download = "Neoenergia"
+    # O diretório de download não é mais usado para salvar arquivos
     
     navegador = iniciar_navegador(headless)
     if not navegador:
@@ -449,7 +420,6 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
     ucs_sucesso = []
     
     tempo_total_inicio = time.perf_counter()
-    os.makedirs(diretorio_download, exist_ok=True)
     
     for i in range(len(df_filtrado)):
         if st.session_state.parar_execucao:
@@ -507,9 +477,9 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
                 if not login_btn_found:
                     for elem in navegador.find_elements(By.XPATH, "//button | //a | //input[@type='button']"):
                          if 'LOGIN' in elem.get_attribute('innerHTML').upper() or 'LOGIN' in elem.get_attribute('value', '').upper(): 
-                             navegador.execute_script("arguments[0].click();", elem)
-                             login_btn_found = True
-                             break
+                            navegador.execute_script("arguments[0].click();", elem)
+                            login_btn_found = True
+                            break
                 
                 time.sleep(2)
                 
@@ -740,10 +710,10 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
                     
                     protocolo_data = res_protocolo.json()
                     protocolo = (protocolo_data.get('protocolo') or 
-                               protocolo_data.get('protocoloSalesforceStr') or 
-                               protocolo_data.get('protocoloSalesforce') or 
-                               protocolo_data.get('protocoloLegadoStr') or 
-                               protocolo_data.get('protocoloLegado'))
+                                 protocolo_data.get('protocoloSalesforceStr') or 
+                                 protocolo_data.get('protocoloSalesforce') or 
+                                 protocolo_data.get('protocoloLegadoStr') or 
+                                 protocolo_data.get('protocoloLegado'))
                     
                     if not protocolo:
                         ucs_retidas.append(uc_info['uc'])
@@ -815,6 +785,9 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
             meses_lista = [mes.strip() for mes in meses_desejados.split(",")]
             
             for mes_desejada in meses_lista:
+                if st.session_state.parar_execucao:
+                    break # Interrompe o loop de meses se o usuário parar
+
                 fatura_desejada = None
                 
                 if id_distribuidora == 52:
@@ -897,40 +870,44 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
                                 ucs_retidas.append(uc_info.get('uc', uc_desejada))
                         continue
 
-                    # Processar resposta do PDF
+                    # === MODIFICAÇÃO: Salvar no st.session_state ===
                     content_type = res_pdf.headers.get('Content-Type', '')
                     mes_ref = mes_desejada.replace('/', '-')
-                    dir_base = os.path.join(os.getcwd(), diretorio_download, mes_ref)
-                    os.makedirs(dir_base, exist_ok=True)
                     
                     nome_distribuidora = distribuidora.upper()
                     codigo_uc = uc_info.get('uc', uc_desejada)
                     nome_arquivo = f"{nome_distribuidora}_{codigo_uc}_{mes_ref}.pdf"
-                    caminho_completo = os.path.join(dir_base, nome_arquivo)
+                    
+                    pdf_bytes = None
 
                     if 'application/json' in content_type:
                         data_json = res_pdf.json()
                         base64_pdf = data_json.get("fileData") or data_json.get("faturaBase64")
                         if base64_pdf:
-                            with open(caminho_completo, "wb") as f:
-                                f.write(base64.b64decode(base64_pdf))
-                            faturas_baixadas_neste_mes += 1
-                            st.success(f"✅ PDF baixado: {nome_arquivo}")
+                            pdf_bytes = base64.b64decode(base64_pdf)
                         else:
                             if uc_info.get('uc', uc_desejada) not in ucs_retidas:
                                 ucs_retidas.append(uc_info.get('uc', uc_desejada))
                     
                     elif 'application/pdf' in content_type:
-                        with open(caminho_completo, "wb") as f:
-                            f.write(res_pdf.content)
-                        faturas_baixadas_neste_mes += 1
-                        st.success(f"✅ PDF baixado: {nome_arquivo}")
+                        pdf_bytes = res_pdf.content
                     
                     else:
                         if uc_info.get('uc', uc_desejada) not in ucs_retidas:
                             ucs_retidas.append(uc_info.get('uc', uc_desejada))
-                            
+
+                    # Se temos os bytes, salvamos na sessão
+                    if pdf_bytes:
+                        if mes_ref not in st.session_state.arquivos_baixados:
+                            st.session_state.arquivos_baixados[mes_ref] = {}
+                        st.session_state.arquivos_baixados[mes_ref][nome_arquivo] = pdf_bytes
+                        
+                        faturas_baixadas_neste_mes += 1
+                        st.success(f"✅ PDF salvo na sessão: {nome_arquivo}")
+                    # ===============================================
+                        
                 except Exception as e:
+                    st.warning(f"Erro ao baixar PDF para UC {uc_info.get('uc', uc_desejada)}: {e}")
                     if uc_info.get('uc', uc_desejada) not in ucs_retidas:
                         ucs_retidas.append(uc_info.get('uc', uc_desejada))
 
@@ -946,6 +923,7 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
             st.write(f"⏱️ Tempo desta UC: {tempo_uc:.2f} segundos")
 
         except Exception as e:
+            st.error(f"Erro inesperado no processamento da UC {df_filtrado['codigo'].iloc[i]}: {e}")
             if df_filtrado['codigo'].iloc[i] not in ucs_retidas:
                 ucs_retidas.append(df_filtrado['codigo'].iloc[i])
 
@@ -1003,38 +981,6 @@ def executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, me
 def main():
     st.sidebar.header("⚙️ Configurações do Scraper")
     
-    # ... (Configurações do usuário) ...
-    
-    try:
-        sheet_key = "1gI3h3F1ALScglYfr7NIfAxYyV0NSVjEJvoKFarlywBY"
-        sheet_name = "bd_ucs"
-
-        # === MODIFICAÇÃO PRINCIPAL ===
-        # Use a função com cache em vez de carregar tudo aqui
-        with st.spinner("🔗 Conectando ao Google Sheets..."):
-            df = carregar_dados_planilha(sheet_key, sheet_name)
-
-        if df.empty:
-            st.error("Não foi possível carregar os dados da planilha. O app não pode continuar.")
-            return
-        # ==============================
-            
-        # ... (O resto do seu código de filtragem do DataFrame) ...
-        # (O código que define as colunas, filtros, etc. vem aqui)
-        # Ex:
-        df.columns = ['uc_id', 'cliente_id_gestor', 'distribuidora_id', 'codigo', 'login',
-                      'senha_dist', 'Status', 'documento', 'Distribuidora',
-                      'Status_Mes_Anterior', 'data_geracao', 'nome', 'Geradora?',
-                      'Clientes', 'Estimativa', 'Status2', 'Historico_Faturas',
-                      'StatusContrato', 'Senha_modificada', 'Status_TEST']
-        df['Estimativa'] = pd.to_numeric(df['Estimativa'], errors='coerce').fillna(0).astype(int)
-        
-        # ... (Restante da sua lógica de filtros e UI) ...
-
-    except Exception as e:
-        st.error(f"❌ Erro ao carregar dados: {e}")
-    st.sidebar.header("⚙️ Configurações do Scraper")
-    
     # Configurações do usuário
     headless = st.sidebar.checkbox("Modo Headless (sem interface gráfica)", value=True)
     meses_desejados = st.sidebar.text_input("Meses desejados (separados por vírgula)", "2025/10")
@@ -1046,27 +992,23 @@ def main():
         st.rerun()
     
     try:
-        with st.spinner("🔗 Conectando ao Google Sheets..."):
-            gc = autorizar_google()
-        
-        if not gc:
-            st.error("❌ Não foi possível conectar ao Google Sheets")
-            return
-            
+        # === MODIFICAÇÃO PRINCIPAL: Usar função com cache ===
         sheet_key = "1gI3h3F1ALScglYfr7NIfAxYyV0NSVjEJvoKFarlywBY"
         sheet_name = "bd_ucs"
 
-        spreadsheet = gc.open_by_key(sheet_key)
-        sheet = spreadsheet.worksheet(sheet_name)
+        with st.spinner("🔗 Conectando ao Google Sheets..."):
+            df = carregar_dados_planilha(sheet_key, sheet_name)
 
-        dados = sheet.get_all_values()
-        df = pd.DataFrame(dados[1:], columns=dados[0])
+        if df.empty:
+            st.error("Não foi possível carregar os dados da planilha. O app não pode continuar.")
+            st.stop() # Para a execução se os dados não forem carregados
+        # ====================================================
 
         df.columns = ['uc_id', 'cliente_id_gestor', 'distribuidora_id', 'codigo', 'login',
-                        'senha_dist', 'Status', 'documento', 'Distribuidora',
-                        'Status_Mes_Anterior', 'data_geracao', 'nome', 'Geradora?',
-                        'Clientes', 'Estimativa', 'Status2', 'Historico_Faturas',
-                        'StatusContrato', 'Senha_modificada', 'Status_TEST']
+                      'senha_dist', 'Status', 'documento', 'Distribuidora',
+                      'Status_Mes_Anterior', 'data_geracao', 'nome', 'Geradora?',
+                      'Clientes', 'Estimativa', 'Status2', 'Historico_Faturas',
+                      'StatusContrato', 'Senha_modificada', 'Status_TEST']
 
         df['Estimativa'] = pd.to_numeric(df['Estimativa'], errors='coerce').fillna(0).astype(int)
 
@@ -1085,7 +1027,7 @@ def main():
         
         # Aplicar filtro de cliente
         if cliente_selecionado == "Todos os Clientes":
-            clientes_selecionados = clientes_unicos[1:]
+            clientes_selecionados = [c for c in clientes_unicos if c != "Todos os Clientes"]
         else:
             clientes_selecionados = [cliente_selecionado]
         
@@ -1095,7 +1037,7 @@ def main():
                                                 value=int(df['Estimativa'].min()))
         with col2:
             estimativa_fim = st.number_input("Fim do intervalo da Estimativa:", 
-                                            value=int(df['Estimativa'].max()))
+                                             value=int(df['Estimativa'].max()))
 
         # Filtro por código UC
         st.sidebar.subheader("🔄 Reset por Código UC")
@@ -1128,6 +1070,8 @@ def main():
                     start_index = indices[0]
                     df_filtrado = df_filtrado_reset.iloc[start_index:].copy()
                     st.sidebar.success(f"✅ Busca iniciará a partir da UC: {codigo_uc_inicio}")
+                else:
+                    st.sidebar.warning(f"⚠️ UC {codigo_uc_inicio} não encontrada nos filtros atuais.")
             except Exception as e:
                 st.sidebar.error(f"❌ Erro ao processar código UC: {e}")
 
@@ -1150,9 +1094,9 @@ def main():
             st.dataframe(df_filtrado, use_container_width=True)
             st.success(f"✅ Total de registros para processar: {len(df_filtrado)}")
         else:
-            st.error("❌ Nenhum registro encontrado para processar.")
-            return
-
+            st.error("❌ Nenhum registro encontrado para processar com os filtros atuais.")
+            # Não usamos 'return' aqui para permitir que a seção de downloads apareça
+ 
         # Botões de controle
         col1, col2 = st.columns(2)
         
@@ -1160,22 +1104,23 @@ def main():
             if st.button("🚀 Iniciar Extração de Faturas", type="primary", use_container_width=True):
                 if len(df_filtrado) == 0:
                     st.warning("⚠️ Nenhum registro encontrado para processar.")
-                    return
-                
-                st.session_state.executando = True
-                st.session_state.parar_execucao = False
-                
-                st.subheader("📈 Progresso da Extração")
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                
-                with st.spinner("🔄 Executando extração de faturas..."):
-                    resultados = executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, mes_atraso, headless)
-                
-                if resultados:
-                    progress_bar.progress(1.0)
-                    status_text.text("✅ Extração concluída!")
-                    st.session_state.executando = False
+                else:
+                    st.session_state.executando = True
+                    st.session_state.parar_execucao = False
+                    
+                    st.subheader("📈 Progresso da Extração")
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+                    
+                    with st.spinner("🔄 Executando extração de faturas..."):
+                        resultados = executar_scraper(df_filtrado, progress_bar, status_text, meses_desejados, mes_atraso, headless)
+                    
+                    if resultados:
+                        progress_bar.progress(1.0)
+                        status_text.text("✅ Extração concluída!")
+                        st.session_state.executando = False
+                        # Força o rerender para exibir a seção de downloads atualizada
+                        st.rerun() 
 
         with col2:
             if st.button("⏹️ Parar Execução", type="secondary", use_container_width=True):
@@ -1186,9 +1131,9 @@ def main():
         exibir_secao_downloads()
 
     except Exception as e:
-        st.error(f"❌ Erro ao carregar dados: {e}")
+        st.error(f"❌ Erro fatal no aplicativo: {e}")
+        st.exception(e) # Mostra o traceback completo para debug
 
 # 🚀 INICIAR APLICAÇÃO
 if __name__ == "__main__":
     main()
-
